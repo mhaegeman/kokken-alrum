@@ -17,6 +17,7 @@ export interface Task {
   id: number;
   phase: number;
   title: string;
+  description: string;
   priority: TaskPriority;
   status: TaskStatus;
   duration: number;
@@ -24,6 +25,22 @@ export interface Task {
   start: string;
   end: string;
   comments: Comment[];
+  attachments: Attachment[];
+}
+
+export type AttachmentKind = 'file' | 'link';
+
+export interface Attachment {
+  id: number;
+  taskId: number;
+  kind: AttachmentKind;
+  filename: string;
+  storagePath?: string | null;
+  url?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  uploadedBy?: string | null;
+  createdAt: string;
 }
 
 export interface BudgetItem {

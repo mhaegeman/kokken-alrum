@@ -1,6 +1,8 @@
 import { supabase } from './supabase';
 import type {
   AppState,
+  Attachment,
+  AttachmentKind,
   BudgetItem,
   Comment,
   Task,
@@ -33,6 +35,7 @@ interface DbTask {
   id: number;
   phase_id: number;
   title: string;
+  description: string | null;
   priority: TaskPriority;
   status: TaskStatus;
   duration: number;
@@ -57,20 +60,49 @@ interface DbBudgetItem {
   actual: number;
 }
 
+interface DbAttachment {
+  id: number;
+  task_id: number;
+  kind: AttachmentKind;
+  storage_path: string | null;
+  url: string | null;
+  filename: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
 // ─── load ─────────────────────────────────────────────────────
 
 export async function loadAppState(): Promise<AppState> {
-  const [settingsRes, phasesRes, catsRes, tasksRes, commentsRes, budgetRes] =
-    await Promise.all([
-      supabase.from('project_settings').select('*').eq('id', 1).single(),
-      supabase.from('phases').select('*').order('sort_order'),
-      supabase.from('budget_categories').select('*').order('sort_order'),
-      supabase.from('tasks').select('*').order('id'),
-      supabase.from('comments').select('*').order('created_at'),
-      supabase.from('budget_items').select('*').order('id'),
-    ]);
+  const [
+    settingsRes,
+    phasesRes,
+    catsRes,
+    tasksRes,
+    commentsRes,
+    budgetRes,
+    attachmentsRes,
+  ] = await Promise.all([
+    supabase.from('project_settings').select('*').eq('id', 1).single(),
+    supabase.from('phases').select('*').order('sort_order'),
+    supabase.from('budget_categories').select('*').order('sort_order'),
+    supabase.from('tasks').select('*').order('id'),
+    supabase.from('comments').select('*').order('created_at'),
+    supabase.from('budget_items').select('*').order('id'),
+    supabase.from('attachments').select('*').order('created_at'),
+  ]);
 
-  for (const r of [settingsRes, phasesRes, catsRes, tasksRes, commentsRes, budgetRes]) {
+  for (const r of [
+    settingsRes,
+    phasesRes,
+    catsRes,
+    tasksRes,
+    commentsRes,
+    budgetRes,
+    attachmentsRes,
+  ]) {
     if (r.error) throw r.error;
   }
 
@@ -80,12 +112,20 @@ export async function loadAppState(): Promise<AppState> {
   const tasks = (tasksRes.data ?? []) as DbTask[];
   const comments = (commentsRes.data ?? []) as DbComment[];
   const budget = (budgetRes.data ?? []) as DbBudgetItem[];
+  const attachments = (attachmentsRes.data ?? []) as DbAttachment[];
 
   const commentsByTask = new Map<number, Comment[]>();
   for (const c of comments) {
     const list = commentsByTask.get(c.task_id) ?? [];
     list.push(commentFromDb(c));
     commentsByTask.set(c.task_id, list);
+  }
+
+  const attachmentsByTask = new Map<number, Attachment[]>();
+  for (const a of attachments) {
+    const list = attachmentsByTask.get(a.task_id) ?? [];
+    list.push(attachmentFromDb(a));
+    attachmentsByTask.set(a.task_id, list);
   }
 
   return {
@@ -100,6 +140,7 @@ export async function loadAppState(): Promise<AppState> {
       id: t.id,
       phase: t.phase_id,
       title: t.title,
+      description: t.description ?? '',
       priority: t.priority,
       status: t.status,
       duration: t.duration,
@@ -107,6 +148,7 @@ export async function loadAppState(): Promise<AppState> {
       start: t.start_date ?? '',
       end: t.end_date ?? '',
       comments: commentsByTask.get(t.id) ?? [],
+      attachments: attachmentsByTask.get(t.id) ?? [],
     })),
     budgetItems: budget.map((b) => ({
       id: b.id,
@@ -123,6 +165,7 @@ export async function loadAppState(): Promise<AppState> {
 export async function updateTaskRemote(id: number, patch: Partial<Task>) {
   const dbPatch: Record<string, unknown> = {};
   if (patch.title !== undefined) dbPatch.title = patch.title;
+  if (patch.description !== undefined) dbPatch.description = patch.description;
   if (patch.status !== undefined) dbPatch.status = patch.status;
   if (patch.priority !== undefined) dbPatch.priority = patch.priority;
   if (patch.duration !== undefined) dbPatch.duration = patch.duration;
@@ -163,6 +206,121 @@ export async function addCommentRemote(
 export async function deleteCommentRemote(commentId: number) {
   const { error } = await supabase.from('comments').delete().eq('id', commentId);
   if (error) throw error;
+}
+
+// ─── attachments ──────────────────────────────────────────────
+
+function attachmentFromDb(a: DbAttachment): Attachment {
+  return {
+    id: a.id,
+    taskId: a.task_id,
+    kind: a.kind,
+    filename: a.filename,
+    storagePath: a.storage_path,
+    url: a.url,
+    mimeType: a.mime_type,
+    sizeBytes: a.size_bytes,
+    uploadedBy: a.uploaded_by,
+    createdAt: a.created_at,
+  };
+}
+
+const ATTACH_BUCKET = 'attachments';
+
+function sanitizeFilename(name: string): string {
+  return name
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 160) || 'file';
+}
+
+export async function uploadFileAttachment(
+  taskId: number,
+  file: File,
+  uploaderId: string,
+): Promise<Attachment> {
+  const safe = sanitizeFilename(file.name);
+  const path = `${taskId}/${Date.now()}-${safe}`;
+
+  const { error: upErr } = await supabase.storage
+    .from(ATTACH_BUCKET)
+    .upload(path, file, {
+      cacheControl: '3600',
+      contentType: file.type || undefined,
+      upsert: false,
+    });
+  if (upErr) throw upErr;
+
+  const { data, error } = await supabase
+    .from('attachments')
+    .insert({
+      task_id: taskId,
+      kind: 'file',
+      storage_path: path,
+      filename: file.name,
+      mime_type: file.type || null,
+      size_bytes: file.size,
+      uploaded_by: uploaderId,
+    })
+    .select()
+    .single();
+  if (error) {
+    // Best-effort cleanup of the uploaded object if the row insert failed.
+    await supabase.storage.from(ATTACH_BUCKET).remove([path]);
+    throw error;
+  }
+  return attachmentFromDb(data as DbAttachment);
+}
+
+export async function addLinkAttachment(
+  taskId: number,
+  url: string,
+  label: string,
+  uploaderId: string,
+): Promise<Attachment> {
+  const trimmedUrl = url.trim();
+  const trimmedLabel = label.trim();
+  if (!/^https?:\/\//i.test(trimmedUrl)) {
+    throw new Error('Links must start with http:// or https://');
+  }
+
+  const { data, error } = await supabase
+    .from('attachments')
+    .insert({
+      task_id: taskId,
+      kind: 'link',
+      url: trimmedUrl,
+      filename: trimmedLabel || trimmedUrl,
+      uploaded_by: uploaderId,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return attachmentFromDb(data as DbAttachment);
+}
+
+export async function deleteAttachmentRemote(attachment: Attachment) {
+  if (attachment.kind === 'file' && attachment.storagePath) {
+    // Remove the object first; if this fails, the DB row would stay dangling.
+    await supabase.storage.from(ATTACH_BUCKET).remove([attachment.storagePath]);
+  }
+  const { error } = await supabase
+    .from('attachments')
+    .delete()
+    .eq('id', attachment.id);
+  if (error) throw error;
+}
+
+export async function getAttachmentSignedUrl(
+  storagePath: string,
+  expiresInSeconds = 60 * 60,
+): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from(ATTACH_BUCKET)
+    .createSignedUrl(storagePath, expiresInSeconds);
+  if (error) throw error;
+  return data.signedUrl;
 }
 
 // ─── budget items ─────────────────────────────────────────────
@@ -242,6 +400,11 @@ export function subscribeToChanges(onChange: () => void) {
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'project_settings' },
+      onChange,
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'attachments' },
       onChange,
     )
     .subscribe();
