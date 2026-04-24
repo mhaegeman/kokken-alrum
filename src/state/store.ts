@@ -23,11 +23,14 @@ interface Store {
 function mergeForwardCompat(s: AppState): AppState {
   return {
     ...s,
-    phases: { ...INITIAL_DATA.phases, ...(s.phases || {}) },
-    budgetCategories: { ...INITIAL_DATA.budgetCategories, ...(s.budgetCategories || {}) },
-    currency: s.currency || INITIAL_DATA.currency,
-    startDate: s.startDate || INITIAL_DATA.startDate,
-    totalBudgetTarget: s.totalBudgetTarget || INITIAL_DATA.totalBudgetTarget,
+    phases: { ...INITIAL_DATA.phases, ...(s.phases ?? {}) },
+    budgetCategories: {
+      ...INITIAL_DATA.budgetCategories,
+      ...(s.budgetCategories ?? {}),
+    },
+    currency: s.currency ?? INITIAL_DATA.currency,
+    startDate: s.startDate ?? INITIAL_DATA.startDate,
+    totalBudgetTarget: s.totalBudgetTarget ?? INITIAL_DATA.totalBudgetTarget,
   };
 }
 
