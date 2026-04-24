@@ -7,8 +7,10 @@ export interface Phase {
 }
 
 export interface Comment {
+  id?: number;
   text: string;
   date: string;
+  authorId?: string | null;
 }
 
 export interface Task {

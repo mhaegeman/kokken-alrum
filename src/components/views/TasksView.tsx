@@ -5,7 +5,7 @@ import type { Task, TaskPriority, TaskStatus } from '../../types';
 type StatusFilter = TaskStatus | 'all';
 type PriorityFilter = TaskPriority | 'all';
 
-export function TasksView() {
+export function TasksView({ authorId }: { authorId: string | null }) {
   const state = useStore((s) => s.state);
   const updateTask = useStore((s) => s.updateTask);
   const addTaskComment = useStore((s) => s.addTaskComment);
@@ -90,7 +90,7 @@ export function TasksView() {
             <div key={t.id}>
               {showPhase && (
                 <div className="phase-header">
-                  Phase {t.phase} · {state.phases[t.phase].name}
+                  Phase {t.phase} · {state.phases[t.phase]?.name}
                 </div>
               )}
               <TaskRow
@@ -98,9 +98,12 @@ export function TasksView() {
                 isOpen={isOpen}
                 onToggle={() => toggle(t.id)}
                 onUpdate={(patch) => updateTask(t.id, patch)}
-                onAddComment={(text) => addTaskComment(t.id, text)}
-                onDeleteComment={(idx) => deleteTaskComment(t.id, idx)}
+                onAddComment={(text) =>
+                  authorId ? addTaskComment(t.id, text, authorId) : undefined
+                }
+                onDeleteComment={(commentId) => deleteTaskComment(t.id, commentId)}
                 titleById={titleById}
+                canComment={!!authorId}
               />
             </div>
           );
@@ -118,14 +121,16 @@ function TaskRow({
   onAddComment,
   onDeleteComment,
   titleById,
+  canComment,
 }: {
   task: Task;
   isOpen: boolean;
   onToggle: () => void;
   onUpdate: (patch: Partial<Task>) => void;
   onAddComment: (text: string) => void;
-  onDeleteComment: (index: number) => void;
+  onDeleteComment: (commentId: number) => void;
   titleById: (id: number) => string;
+  canComment: boolean;
 }) {
   const [commentText, setCommentText] = useState('');
 
@@ -221,30 +226,35 @@ function TaskRow({
 
         <div className="comments">
           <h4>Comments ({task.comments.length})</h4>
-          {task.comments.map((c, i) => (
-            <div key={i} className="comment">
+          {task.comments.map((c) => (
+            <div key={c.id ?? `${c.date}-${c.text}`} className="comment">
               <div className="comment-text">{c.text}</div>
               <div className="comment-date">{c.date}</div>
-              <button
-                className="comment-del"
-                title="Delete"
-                onClick={() => onDeleteComment(i)}
-              >
-                ✕
-              </button>
+              {c.id !== undefined && (
+                <button
+                  className="comment-del"
+                  title="Delete"
+                  onClick={() => onDeleteComment(c.id as number)}
+                >
+                  ✕
+                </button>
+              )}
             </div>
           ))}
           <div className="comment-add">
             <input
               type="text"
-              placeholder="Add a comment..."
+              placeholder={
+                canComment ? 'Add a comment...' : 'Sign in to add comments'
+              }
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') doAdd();
               }}
+              disabled={!canComment}
             />
-            <button className="btn-primary" onClick={doAdd}>
+            <button className="btn-primary" onClick={doAdd} disabled={!canComment}>
               Add
             </button>
           </div>

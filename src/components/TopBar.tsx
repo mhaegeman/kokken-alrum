@@ -1,29 +1,20 @@
-import { useRef } from 'react';
-import { useStore, exportJson, importJson } from '../state/store';
+import { useStore, exportJson } from '../state/store';
+import { signOut, type Profile } from '../lib/auth';
 import { Avatar } from './Avatar';
 import type { ViewId } from '../types';
 
-export function TopBar({ onHome }: { onHome: (v: ViewId) => void }) {
+export function TopBar({
+  onHome,
+  profile,
+}: {
+  onHome: (v: ViewId) => void;
+  profile: Profile | null;
+}) {
   const state = useStore((s) => s.state);
-  const reset = useStore((s) => s.reset);
-  const replaceState = useStore((s) => s.replaceState);
-  const fileInput = useRef<HTMLInputElement>(null);
 
-  const onReset = () => {
-    if (confirm('Reset all data to defaults? This cannot be undone.')) reset();
-  };
-
-  const onImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const data = await importJson(file);
-      replaceState(data);
-    } catch (err) {
-      alert('Failed to import: ' + (err as Error).message);
-    } finally {
-      e.target.value = '';
-    }
+  const onSignOut = async () => {
+    if (!confirm('Sign out of Køkken alrum?')) return;
+    await signOut();
   };
 
   return (
@@ -47,21 +38,22 @@ export function TopBar({ onHome }: { onHome: (v: ViewId) => void }) {
             <button className="icon-btn" onClick={() => exportJson(state)}>
               Export
             </button>
-            <button
-              className="icon-btn"
-              onClick={() => fileInput.current?.click()}
-            >
-              Import
-            </button>
-            <input
-              ref={fileInput}
-              type="file"
-              accept="application/json"
-              hidden
-              onChange={onImport}
-            />
-            <button className="icon-btn danger" onClick={onReset}>
-              Reset
+            {profile && (
+              <span
+                className="topbar-user"
+                title={profile.email}
+                style={{
+                  fontSize: 13,
+                  color: 'var(--text-2)',
+                  padding: '0 4px',
+                  alignSelf: 'center',
+                }}
+              >
+                {profile.display_name}
+              </span>
+            )}
+            <button className="icon-btn danger" onClick={onSignOut}>
+              Sign out
             </button>
           </div>
         </div>
