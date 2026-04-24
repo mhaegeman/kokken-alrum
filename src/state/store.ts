@@ -1,136 +1,218 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import type { AppState, BudgetItem, Task } from '../types';
-import { INITIAL_DATA } from './initial';
+import {
+  loadAppState,
+  addCommentRemote,
+  addBudgetItemRemote,
+  deleteBudgetItemRemote,
+  deleteCommentRemote,
+  subscribeToChanges,
+  updateBudgetItemRemote,
+  updateSettingsRemote,
+  updateTaskRemote,
+} from '../lib/api';
 
-const STORAGE_KEY = 'kokken_alrum_state_v1';
+const EMPTY_STATE: AppState = {
+  startDate: '',
+  currency: 'DKK',
+  totalBudgetTarget: 0,
+  phases: {},
+  budgetCategories: {},
+  tasks: [],
+  budgetItems: [],
+};
+
+export type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 interface Store {
   state: AppState;
-  setState: (patch: Partial<AppState>) => void;
-  updateTask: (id: number, patch: Partial<Task>) => void;
-  addTaskComment: (id: number, text: string) => void;
-  deleteTaskComment: (id: number, index: number) => void;
-  updateBudgetItem: (id: number, patch: Partial<BudgetItem>) => void;
-  addBudgetItem: (item: Omit<BudgetItem, 'id'>) => void;
-  deleteBudgetItem: (id: number) => void;
-  setBudgetTarget: (target: number) => void;
-  setStartDate: (date: string) => void;
-  reset: () => void;
-  replaceState: (state: AppState) => void;
+  status: LoadStatus;
+  error: string | null;
+
+  loadFromServer: () => Promise<void>;
+  startRealtime: () => () => void;
+
+  updateTask: (id: number, patch: Partial<Task>) => Promise<void>;
+  addTaskComment: (taskId: number, text: string, authorId: string) => Promise<void>;
+  deleteTaskComment: (taskId: number, commentId: number) => Promise<void>;
+
+  updateBudgetItem: (id: number, patch: Partial<BudgetItem>) => Promise<void>;
+  addBudgetItem: (item: Omit<BudgetItem, 'id'>) => Promise<void>;
+  deleteBudgetItem: (id: number) => Promise<void>;
+
+  setBudgetTarget: (target: number) => Promise<void>;
+  setStartDate: (date: string) => Promise<void>;
 }
 
-function mergeForwardCompat(s: AppState): AppState {
-  return {
-    ...s,
-    phases: { ...INITIAL_DATA.phases, ...(s.phases ?? {}) },
-    budgetCategories: {
-      ...INITIAL_DATA.budgetCategories,
-      ...(s.budgetCategories ?? {}),
-    },
-    currency: s.currency ?? INITIAL_DATA.currency,
-    startDate: s.startDate ?? INITIAL_DATA.startDate,
-    totalBudgetTarget: s.totalBudgetTarget ?? INITIAL_DATA.totalBudgetTarget,
-  };
+// Small helper: applies an optimistic patch, runs the remote mutation, and if
+// it fails reverts by forcing a reload from the server.
+async function withOptimistic(
+  apply: () => void,
+  remote: () => Promise<void>,
+  reload: () => Promise<void>,
+) {
+  apply();
+  try {
+    await remote();
+  } catch (e) {
+    console.error(e);
+    alert('Save failed: ' + (e as Error).message);
+    await reload();
+  }
 }
 
-export const useStore = create<Store>()(
-  persist(
-    (set) => ({
-      state: structuredClone(INITIAL_DATA),
+export const useStore = create<Store>()((set, get) => ({
+  state: EMPTY_STATE,
+  status: 'idle',
+  error: null,
 
-      setState: (patch) =>
-        set((s) => ({ state: { ...s.state, ...patch } })),
+  async loadFromServer() {
+    set({ status: 'loading', error: null });
+    try {
+      const next = await loadAppState();
+      set({ state: next, status: 'ready' });
+    } catch (e) {
+      console.error(e);
+      set({ status: 'error', error: (e as Error).message });
+    }
+  },
 
-      updateTask: (id, patch) =>
-        set((s) => ({
+  startRealtime() {
+    let pending: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = subscribeToChanges(() => {
+      if (pending) clearTimeout(pending);
+      pending = setTimeout(() => {
+        get().loadFromServer();
+      }, 300);
+    });
+    return () => {
+      if (pending) clearTimeout(pending);
+      unsubscribe();
+    };
+  },
+
+  // ─── tasks ──────────────────────────────────────────────
+
+  async updateTask(id, patch) {
+    const prev = get().state;
+    await withOptimistic(
+      () =>
+        set({
           state: {
-            ...s.state,
-            tasks: s.state.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+            ...prev,
+            tasks: prev.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)),
           },
-        })),
+        }),
+      () => updateTaskRemote(id, patch),
+      () => get().loadFromServer(),
+    );
+  },
 
-      addTaskComment: (id, text) =>
-        set((s) => ({
+  async addTaskComment(taskId, text, authorId) {
+    if (!text.trim()) return;
+    try {
+      const comment = await addCommentRemote(taskId, text.trim(), authorId);
+      const prev = get().state;
+      set({
+        state: {
+          ...prev,
+          tasks: prev.tasks.map((t) =>
+            t.id === taskId ? { ...t, comments: [...t.comments, comment] } : t,
+          ),
+        },
+      });
+    } catch (e) {
+      alert('Could not add comment: ' + (e as Error).message);
+    }
+  },
+
+  async deleteTaskComment(taskId, commentId) {
+    const prev = get().state;
+    await withOptimistic(
+      () =>
+        set({
           state: {
-            ...s.state,
-            tasks: s.state.tasks.map((t) =>
-              t.id === id
-                ? {
-                    ...t,
-                    comments: [
-                      ...t.comments,
-                      { text, date: new Date().toISOString().slice(0, 10) },
-                    ],
-                  }
+            ...prev,
+            tasks: prev.tasks.map((t) =>
+              t.id === taskId
+                ? { ...t, comments: t.comments.filter((c) => c.id !== commentId) }
                 : t,
             ),
           },
-        })),
+        }),
+      () => deleteCommentRemote(commentId),
+      () => get().loadFromServer(),
+    );
+  },
 
-      deleteTaskComment: (id, index) =>
-        set((s) => ({
-          state: {
-            ...s.state,
-            tasks: s.state.tasks.map((t) =>
-              t.id === id
-                ? { ...t, comments: t.comments.filter((_, i) => i !== index) }
-                : t,
-            ),
-          },
-        })),
+  // ─── budget ─────────────────────────────────────────────
 
-      updateBudgetItem: (id, patch) =>
-        set((s) => ({
+  async updateBudgetItem(id, patch) {
+    const prev = get().state;
+    await withOptimistic(
+      () =>
+        set({
           state: {
-            ...s.state,
-            budgetItems: s.state.budgetItems.map((i) =>
+            ...prev,
+            budgetItems: prev.budgetItems.map((i) =>
               i.id === id ? { ...i, ...patch } : i,
             ),
           },
-        })),
-
-      addBudgetItem: (item) =>
-        set((s) => {
-          const nextId = Math.max(0, ...s.state.budgetItems.map((i) => i.id)) + 1;
-          return {
-            state: {
-              ...s.state,
-              budgetItems: [...s.state.budgetItems, { ...item, id: nextId }],
-            },
-          };
         }),
+      () => updateBudgetItemRemote(id, patch),
+      () => get().loadFromServer(),
+    );
+  },
 
-      deleteBudgetItem: (id) =>
-        set((s) => ({
+  async addBudgetItem(item) {
+    try {
+      const row = await addBudgetItemRemote(item);
+      const prev = get().state;
+      set({
+        state: { ...prev, budgetItems: [...prev.budgetItems, row] },
+      });
+    } catch (e) {
+      alert('Could not add item: ' + (e as Error).message);
+    }
+  },
+
+  async deleteBudgetItem(id) {
+    const prev = get().state;
+    await withOptimistic(
+      () =>
+        set({
           state: {
-            ...s.state,
-            budgetItems: s.state.budgetItems.filter((i) => i.id !== id),
+            ...prev,
+            budgetItems: prev.budgetItems.filter((i) => i.id !== id),
           },
-        })),
+        }),
+      () => deleteBudgetItemRemote(id),
+      () => get().loadFromServer(),
+    );
+  },
 
-      setBudgetTarget: (target) =>
-        set((s) => ({ state: { ...s.state, totalBudgetTarget: target } })),
+  // ─── settings ───────────────────────────────────────────
 
-      setStartDate: (date) =>
-        set((s) => ({ state: { ...s.state, startDate: date } })),
+  async setBudgetTarget(target) {
+    const prev = get().state;
+    await withOptimistic(
+      () => set({ state: { ...prev, totalBudgetTarget: target } }),
+      () => updateSettingsRemote({ totalBudgetTarget: target }),
+      () => get().loadFromServer(),
+    );
+  },
 
-      reset: () => set({ state: structuredClone(INITIAL_DATA) }),
+  async setStartDate(date) {
+    const prev = get().state;
+    await withOptimistic(
+      () => set({ state: { ...prev, startDate: date } }),
+      () => updateSettingsRemote({ startDate: date }),
+      () => get().loadFromServer(),
+    );
+  },
+}));
 
-      replaceState: (state) => set({ state }),
-    }),
-    {
-      name: STORAGE_KEY,
-      version: 1,
-      partialize: (s) => ({ state: s.state }),
-      merge: (persisted, current) => {
-        const p = persisted as { state?: AppState } | undefined;
-        if (!p?.state) return current;
-        return { ...current, state: mergeForwardCompat(p.state) };
-      },
-    },
-  ),
-);
+// ─── JSON snapshot export (nice-to-have for backup) ──────────────
 
 export function exportJson(state: AppState) {
   const blob = new Blob([JSON.stringify(state, null, 2)], {
@@ -144,13 +226,4 @@ export function exportJson(state: AppState) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-}
-
-export async function importJson(file: File): Promise<AppState> {
-  const text = await file.text();
-  const data = JSON.parse(text);
-  if (!data.tasks || !data.budgetItems) {
-    throw new Error('Invalid file — missing tasks or budgetItems.');
-  }
-  return data as AppState;
 }

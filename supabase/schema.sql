@@ -1,0 +1,285 @@
+-- ═══════════════════════════════════════════════════════════════
+-- Køkken alrum — initial schema, seed data, and RLS
+-- Paste this entire file into Supabase SQL Editor and run.
+-- Safe to re-run: everything is idempotent.
+-- ═══════════════════════════════════════════════════════════════
+
+-- ─── 1. profiles ───────────────────────────────────────────────
+-- One row per auth.users row. Holds display name + which avatar (palm tree
+-- or rose). Inserted automatically on signup via the trigger below.
+
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text unique not null,
+  display_name text not null default '',
+  tone text not null default 'forest' check (tone in ('forest','rose')),
+  avatar text not null default 'palm' check (avatar in ('palm','rose')),
+  created_at timestamptz not null default now()
+);
+
+-- Auto-create a profile when a new auth user is created.
+-- Pre-assigns display_name + avatar for the two known project members;
+-- anyone else gets generic defaults (and will be blocked by RLS below).
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_display text;
+  v_tone text;
+  v_avatar text;
+begin
+  case lower(new.email)
+    when 'maximehaegeman@gmail.com' then
+      v_display := 'Max'; v_tone := 'forest'; v_avatar := 'palm';
+    when 'karoline.j.geiker@gmail.com' then
+      v_display := 'Karo'; v_tone := 'rose'; v_avatar := 'rose';
+    else
+      v_display := split_part(new.email, '@', 1);
+      v_tone := 'forest';
+      v_avatar := 'palm';
+  end case;
+
+  insert into public.profiles (id, email, display_name, tone, avatar)
+  values (new.id, new.email, v_display, v_tone, v_avatar)
+  on conflict (id) do nothing;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- ─── 2. phases (lookup, project-wide) ──────────────────────────
+create table if not exists public.phases (
+  id integer primary key,
+  name text not null,
+  color text not null,
+  sort_order integer not null default 0
+);
+
+-- ─── 3. budget_categories (lookup, project-wide) ───────────────
+create table if not exists public.budget_categories (
+  id text primary key,
+  name text not null,
+  sort_order integer not null default 0
+);
+
+-- ─── 4. project_settings (single row) ──────────────────────────
+create table if not exists public.project_settings (
+  id integer primary key default 1 check (id = 1),
+  start_date date not null default '2026-05-01',
+  currency text not null default 'DKK',
+  total_budget_target numeric not null default 180000,
+  updated_at timestamptz not null default now()
+);
+
+-- ─── 5. tasks ──────────────────────────────────────────────────
+create table if not exists public.tasks (
+  id integer primary key,
+  phase_id integer not null references public.phases(id),
+  title text not null,
+  priority text not null default 'medium' check (priority in ('high','medium','low')),
+  status text not null default 'not_started' check (status in ('not_started','in_progress','blocked','done')),
+  duration integer not null default 0,
+  deps integer[] not null default '{}',
+  start_date date,
+  end_date date,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Keep an auto-incrementing sequence so inserts from the client can use it.
+create sequence if not exists public.tasks_id_seq owned by public.tasks.id;
+alter table public.tasks alter column id set default nextval('public.tasks_id_seq');
+
+-- ─── 6. comments ───────────────────────────────────────────────
+create table if not exists public.comments (
+  id bigserial primary key,
+  task_id integer not null references public.tasks(id) on delete cascade,
+  author_id uuid references public.profiles(id) on delete set null,
+  body text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists comments_task_id_idx on public.comments(task_id);
+
+-- ─── 7. budget_items ───────────────────────────────────────────
+create table if not exists public.budget_items (
+  id integer primary key,
+  category_id text not null references public.budget_categories(id),
+  name text not null,
+  estimate numeric not null default 0,
+  actual numeric not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create sequence if not exists public.budget_items_id_seq owned by public.budget_items.id;
+alter table public.budget_items alter column id set default nextval('public.budget_items_id_seq');
+
+-- ─── 8. updated_at trigger helper ──────────────────────────────
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+drop trigger if exists tasks_updated_at on public.tasks;
+create trigger tasks_updated_at
+  before update on public.tasks
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists budget_items_updated_at on public.budget_items;
+create trigger budget_items_updated_at
+  before update on public.budget_items
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists project_settings_updated_at on public.project_settings;
+create trigger project_settings_updated_at
+  before update on public.project_settings
+  for each row execute function public.set_updated_at();
+
+-- ═══════════════════════════════════════════════════════════════
+-- Seed data (matches the old src/state/initial.ts exactly)
+-- Uses ON CONFLICT so re-runs are no-ops.
+-- ═══════════════════════════════════════════════════════════════
+
+insert into public.project_settings (id, start_date, currency, total_budget_target)
+values (1, '2026-05-01', 'DKK', 180000)
+on conflict (id) do nothing;
+
+insert into public.phases (id, name, color, sort_order) values
+  (1, 'Planning & design',  '#D6A7A1', 1),
+  (2, 'Approvals & quotes', '#8CA58B', 2),
+  (3, 'Execution',          '#3F5E4E', 3),
+  (4, 'Kids room',          '#C59A52', 4)
+on conflict (id) do update set name = excluded.name, color = excluded.color;
+
+insert into public.budget_categories (id, name, sort_order) values
+  ('design',     'Design & approvals',      1),
+  ('plumbing',   'Plumbing',                2),
+  ('electric',   'Electrical',              3),
+  ('cabinets',   'Cabinets & countertops',  4),
+  ('appliances', 'Appliances',              5),
+  ('demolition', 'Demolition & disposal',   6),
+  ('labor',      'Labor',                   7),
+  ('kids',       'Kids room',               8),
+  ('misc',       'Misc & contingency',      9)
+on conflict (id) do update set name = excluded.name;
+
+insert into public.tasks (id, phase_id, title, priority, status, duration, deps) values
+  (1,  1, 'Agree on a layout',                                            'high',   'not_started',  7, '{}'),
+  (2,  1, 'Review by family architect & get technical drawings',          'high',   'not_started', 14, '{1}'),
+  (3,  2, 'Plumber estimate (VVS of residence)',                           'high',   'not_started', 10, '{2}'),
+  (4,  2, 'Electrician estimate',                                          'high',   'not_started', 10, '{2}'),
+  (5,  2, 'Kitchen builder friend: reuse vs buy vs build',                 'high',   'not_started', 10, '{2}'),
+  (6,  2, 'Make total budget',                                             'high',   'not_started',  5, '{3,4,5}'),
+  (7,  2, 'Get board approval (residence)',                                'high',   'not_started', 21, '{2,6}'),
+  (8,  2, 'Get kommune approval',                                          'high',   'not_started', 30, '{7}'),
+  (9,  3, 'Old kitchen removal',                                           'medium', 'not_started',  3, '{8}'),
+  (10, 3, 'Inspect floor & walls of old kitchen',                          'medium', 'not_started',  2, '{9}'),
+  (11, 3, 'Plumbing and electrical work',                                  'high',   'not_started',  7, '{9}'),
+  (12, 3, 'New kitchen installation',                                      'high',   'not_started', 10, '{11}'),
+  (13, 4, 'Make kids room',                                                'medium', 'not_started', 14, '{10,12}')
+on conflict (id) do nothing;
+
+-- Bump sequence past seeded IDs so client-side inserts don't collide.
+select setval('public.tasks_id_seq',
+              greatest((select coalesce(max(id), 0) from public.tasks), 13));
+
+insert into public.budget_items (id, category_id, name, estimate, actual) values
+  (1,  'design',     'Architect drawings',                       0,     0),
+  (2,  'design',     'Kommune application fees',              1000,     0),
+  (3,  'plumbing',   'VVS work (rerouting + new)',           25000,     0),
+  (4,  'electric',   'Electrical work (new circuits, sockets)', 18000, 0),
+  (5,  'cabinets',   'New cabinets + countertop',            45000,     0),
+  (6,  'appliances', 'Oven, hob, extractor',                 15000,     0),
+  (7,  'appliances', 'Dishwasher',                            6000,     0),
+  (8,  'appliances', 'Fridge/freezer',                        8000,     0),
+  (9,  'demolition', 'Old kitchen removal + waste',           5000,     0),
+  (10, 'labor',      'Kitchen builder friend',               20000,     0),
+  (11, 'kids',       'Flooring / wall repair',               10000,     0),
+  (12, 'kids',       'Paint, fixtures, lighting',             5000,     0),
+  (13, 'misc',       'Contingency (~10%)',                   15000,     0)
+on conflict (id) do nothing;
+
+select setval('public.budget_items_id_seq',
+              greatest((select coalesce(max(id), 0) from public.budget_items), 13));
+
+-- ═══════════════════════════════════════════════════════════════
+-- RLS — only authenticated users (Max + Karo) can read/write.
+-- Sign-ups are disabled in the Auth settings, so there can only ever
+-- be two auth users; no need for an extra allowlist table.
+-- ═══════════════════════════════════════════════════════════════
+
+alter table public.profiles          enable row level security;
+alter table public.phases             enable row level security;
+alter table public.budget_categories  enable row level security;
+alter table public.project_settings   enable row level security;
+alter table public.tasks              enable row level security;
+alter table public.comments           enable row level security;
+alter table public.budget_items       enable row level security;
+
+-- profiles: anyone logged in can read both profiles; you can only edit your own.
+drop policy if exists "profiles_read" on public.profiles;
+create policy "profiles_read" on public.profiles for select
+  to authenticated using (true);
+drop policy if exists "profiles_self_update" on public.profiles;
+create policy "profiles_self_update" on public.profiles for update
+  to authenticated using (id = auth.uid()) with check (id = auth.uid());
+
+-- phases / budget_categories / project_settings: any authed user can CRUD.
+-- (Shared project data.)
+do $$
+declare t text;
+begin
+  foreach t in array array['phases','budget_categories','project_settings','tasks','budget_items']
+  loop
+    execute format('drop policy if exists "%1$s_all" on public.%1$I', t);
+    execute format('create policy "%1$s_all" on public.%1$I for all to authenticated using (true) with check (true)', t);
+  end loop;
+end $$;
+
+-- comments: anyone authed can read; can insert only as themselves; can update/delete only their own.
+drop policy if exists "comments_read"   on public.comments;
+drop policy if exists "comments_insert" on public.comments;
+drop policy if exists "comments_update" on public.comments;
+drop policy if exists "comments_delete" on public.comments;
+
+create policy "comments_read"   on public.comments for select
+  to authenticated using (true);
+create policy "comments_insert" on public.comments for insert
+  to authenticated with check (author_id = auth.uid());
+create policy "comments_update" on public.comments for update
+  to authenticated using (author_id = auth.uid()) with check (author_id = auth.uid());
+create policy "comments_delete" on public.comments for delete
+  to authenticated using (author_id = auth.uid());
+
+-- ═══════════════════════════════════════════════════════════════
+-- Realtime — let both clients see each other's changes live.
+-- (Adding a table twice errors; the DO-block makes this idempotent.)
+-- ═══════════════════════════════════════════════════════════════
+
+do $$
+declare t text;
+begin
+  foreach t in array array['tasks','comments','budget_items','project_settings']
+  loop
+    begin
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    exception when duplicate_object then
+      -- already in publication; fine
+      null;
+    end;
+  end loop;
+end $$;
