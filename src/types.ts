@@ -42,4 +42,4 @@ export interface AppState {
   totalBudgetTarget: number;
 }
 
-export type ViewId = 'tasks' | 'timeline' | 'budget';
+export type ViewId = 'home' | 'tasks' | 'timeline' | 'budget' | 'notes';

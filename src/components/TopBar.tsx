@@ -1,7 +1,9 @@
 import { useRef } from 'react';
 import { useStore, exportJson, importJson } from '../state/store';
+import { Avatar } from './Avatar';
+import type { ViewId } from '../types';
 
-export function TopBar() {
+export function TopBar({ onHome }: { onHome: (v: ViewId) => void }) {
   const state = useStore((s) => s.state);
   const reset = useStore((s) => s.reset);
   const replaceState = useStore((s) => s.replaceState);
@@ -27,30 +29,41 @@ export function TopBar() {
   return (
     <header className="topbar">
       <div className="container">
-        <div className="brand">
-          <div className="logo">KA</div>
+        <button className="brand" onClick={() => onHome('home')}>
+          <div className="brand-mark">K</div>
           <div>
-            <h1>Køkken alrum</h1>
-            <p className="subtitle">Copenhagen renovation tracker</p>
+            <p className="brand-title">Køkken alrum</p>
+            <p className="brand-sub">Copenhagen</p>
           </div>
-        </div>
-        <div className="actions">
-          <button className="btn-ghost" onClick={() => exportJson(state)}>
-            Export
-          </button>
-          <button className="btn-ghost" onClick={() => fileInput.current?.click()}>
-            Import
-          </button>
-          <input
-            ref={fileInput}
-            type="file"
-            accept="application/json"
-            hidden
-            onChange={onImport}
-          />
-          <button className="btn-ghost danger" onClick={onReset}>
-            Reset
-          </button>
+        </button>
+
+        <div className="topbar-end">
+          <div className="avatars" aria-label="Project members">
+            <Avatar user="max" title="Max" />
+            <Avatar user="karo" title="Karo" />
+          </div>
+
+          <div className="menu">
+            <button className="icon-btn" onClick={() => exportJson(state)}>
+              Export
+            </button>
+            <button
+              className="icon-btn"
+              onClick={() => fileInput.current?.click()}
+            >
+              Import
+            </button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept="application/json"
+              hidden
+              onChange={onImport}
+            />
+            <button className="icon-btn danger" onClick={onReset}>
+              Reset
+            </button>
+          </div>
         </div>
       </div>
     </header>
