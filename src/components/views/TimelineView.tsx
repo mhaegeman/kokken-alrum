@@ -36,14 +36,14 @@ export function TimelineView() {
         <div className="timeline-legend">
           {Object.entries(state.phases).map(([id, p]) => (
             <span key={id}>
-              <span className="legend-swatch" style={{ background: p.color }} />
+              <span className={`legend-swatch bar-phase-${id}`} />
               {p.name}
             </span>
           ))}
           <span>
             <span
               className="legend-swatch"
-              style={{ background: '#888', opacity: 0.45 }}
+              style={{ background: 'var(--graphite-3)', opacity: 0.45 }}
             />
             Done
           </span>
