@@ -13,9 +13,11 @@ function truncate(text: string, n: number): string {
 export function HomeView({
   onNavigate,
   onOpenTask,
+  onOpenTopic,
 }: {
   onNavigate: (v: ViewId) => void;
   onOpenTask: (taskId: number) => void;
+  onOpenTopic: (topicId: number) => void;
 }) {
   const state = useStore((s) => s.state);
 
@@ -54,6 +56,9 @@ export function HomeView({
       date: string;
       text: string;
       where: string;
+      kind: 'task' | 'note';
+      taskId?: number;
+      topicId?: number;
     }[] = [];
     state.tasks.forEach((t) => {
       t.comments.forEach((c) => {
@@ -62,6 +67,8 @@ export function HomeView({
           date: c.date,
           text: c.text,
           where: t.title,
+          kind: 'task',
+          taskId: t.id,
         });
       });
     });
@@ -72,6 +79,8 @@ export function HomeView({
         date: m.createdAt.slice(0, 10),
         text: m.body,
         where: topic ? `Notes · ${topic.title}` : 'Notes',
+        kind: 'note',
+        topicId: m.topicId,
       });
     });
     items.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
@@ -200,14 +209,21 @@ export function HomeView({
               </p>
             )}
             {activity.map((a, i) => (
-              <div key={i} className="activity-item">
+              <button
+                key={i}
+                className="activity-item activity-btn"
+                onClick={() => {
+                  if (a.kind === 'task' && a.taskId != null) onOpenTask(a.taskId);
+                  else if (a.kind === 'note' && a.topicId != null) onOpenTopic(a.topicId);
+                }}
+              >
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p className="activity-text">
                     On <b>{a.where}</b> — {truncate(a.text, 140)}
                   </p>
                   <p className="activity-meta tnum">{a.date}</p>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>

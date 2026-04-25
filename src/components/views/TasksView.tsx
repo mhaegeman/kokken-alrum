@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../../state/store';
 import type { TaskPriority, TaskStatus } from '../../types';
+import { toast } from '../../lib/toast';
 
 type StatusFilter = TaskStatus | 'all';
 type PriorityFilter = TaskPriority | 'all';
@@ -11,10 +12,15 @@ export function TasksView({
   onOpenTask: (taskId: number) => void;
 }) {
   const state = useStore((s) => s.state);
+  const addTask = useStore((s) => s.addTask);
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [phaseFilter, setPhaseFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
+  const [adding, setAdding] = useState(false);
+
+  const phaseEntries = Object.entries(state.phases);
+  const firstPhaseId = phaseEntries[0]?.[0] ?? '1';
 
   const tasks = useMemo(
     () =>
@@ -47,7 +53,7 @@ export function TasksView({
         <label>Phase</label>
         <select value={phaseFilter} onChange={(e) => setPhaseFilter(e.target.value)}>
           <option value="all">All</option>
-          {Object.entries(state.phases).map(([id, p]) => (
+          {phaseEntries.map(([id, p]) => (
             <option key={id} value={id}>
               {id}. {p.name}
             </option>
@@ -64,11 +70,39 @@ export function TasksView({
           <option value="medium">Medium</option>
           <option value="low">Low</option>
         </select>
+
+        <button
+          className="btn-quiet"
+          style={{ marginLeft: 'auto' }}
+          onClick={() => setAdding((v) => !v)}
+        >
+          {adding ? 'Cancel' : '+ New task'}
+        </button>
       </div>
+
+      {adding && (
+        <NewTaskForm
+          phaseEntries={phaseEntries}
+          defaultPhase={firstPhaseId}
+          onCancel={() => setAdding(false)}
+          onCreate={async (input) => {
+            const id = await addTask(input);
+            if (id != null) {
+              toast.success('Task added.');
+              setAdding(false);
+              onOpenTask(id);
+            }
+          }}
+        />
+      )}
 
       <div>
         {tasks.length === 0 && (
-          <p className="empty">No tasks match the current filters.</p>
+          <p className="empty">
+            {state.tasks.length === 0
+              ? 'No tasks yet. Click + New task to add one.'
+              : 'No tasks match the current filters.'}
+          </p>
         )}
         {tasks.map((t) => {
           const showPhase = t.phase !== lastPhase;
@@ -113,5 +147,91 @@ export function TasksView({
         })}
       </div>
     </>
+  );
+}
+
+function NewTaskForm({
+  phaseEntries,
+  defaultPhase,
+  onCancel,
+  onCreate,
+}: {
+  phaseEntries: [string, { name: string; color: string }][];
+  defaultPhase: string;
+  onCancel: () => void;
+  onCreate: (input: {
+    title: string;
+    phase: number;
+    priority: TaskPriority;
+    duration: number;
+  }) => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [phase, setPhase] = useState(defaultPhase);
+  const [priority, setPriority] = useState<TaskPriority>('medium');
+  const [duration, setDuration] = useState<number>(3);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    const t = title.trim();
+    if (!t) return;
+    setBusy(true);
+    try {
+      await onCreate({
+        title: t,
+        phase: Number(phase),
+        priority,
+        duration: Math.max(0, duration | 0),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="new-task-row">
+      <input
+        type="text"
+        autoFocus
+        placeholder="What's the task?"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submit();
+          if (e.key === 'Escape') onCancel();
+        }}
+        style={{ flex: 2, minWidth: 240 }}
+      />
+      <select value={phase} onChange={(e) => setPhase(e.target.value)}>
+        {phaseEntries.map(([id, p]) => (
+          <option key={id} value={id}>
+            Phase {id} · {p.name}
+          </option>
+        ))}
+      </select>
+      <select
+        value={priority}
+        onChange={(e) => setPriority(e.target.value as TaskPriority)}
+      >
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+      </select>
+      <input
+        type="number"
+        min={0}
+        value={duration}
+        onChange={(e) => setDuration(parseInt(e.target.value, 10) || 0)}
+        style={{ width: 80 }}
+        title="Duration in days"
+      />
+      <button
+        className="btn-primary"
+        onClick={submit}
+        disabled={!title.trim() || busy}
+      >
+        {busy ? 'Adding…' : 'Add'}
+      </button>
+    </div>
   );
 }

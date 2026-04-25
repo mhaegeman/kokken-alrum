@@ -169,6 +169,27 @@ create table if not exists public.note_messages (
 
 create index if not exists note_messages_topic_id_idx on public.note_messages(topic_id);
 
+-- ─── 8b. mentions ──────────────────────────────────────────────
+-- One row per (mentioned user, source row). Source can be a task
+-- comment OR a note message. Created automatically by triggers
+-- below — the client never inserts here directly.
+
+create table if not exists public.mentions (
+  id bigserial primary key,
+  source_kind text not null check (source_kind in ('comment','note_message')),
+  source_id bigint not null,
+  task_id integer references public.tasks(id) on delete cascade,
+  topic_id bigint references public.notes_topics(id) on delete cascade,
+  mentioned_user_id uuid not null references public.profiles(id) on delete cascade,
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  seen_at timestamptz,
+  unique (source_kind, source_id, mentioned_user_id)
+);
+
+create index if not exists mentions_unread_idx
+  on public.mentions(mentioned_user_id) where seen_at is null;
+
 -- ─── 9. updated_at trigger helper ──────────────────────────────
 create or replace function public.set_updated_at()
 returns trigger
@@ -199,6 +220,77 @@ drop trigger if exists notes_topics_updated_at on public.notes_topics;
 create trigger notes_topics_updated_at
   before update on public.notes_topics
   for each row execute function public.set_updated_at();
+
+-- ═══════════════════════════════════════════════════════════════
+-- Mention parsing — when a comment or note_message is inserted, scan
+-- the body for @display_name tokens and write rows into public.mentions
+-- for each matched user (excluding the author). Runs as security
+-- definer so it bypasses RLS for the inserts.
+-- ═══════════════════════════════════════════════════════════════
+
+create or replace function public.parse_mentions()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_source_kind text;
+  v_task_id integer;
+  v_topic_id bigint;
+  v_body text;
+  v_author uuid;
+  m_user record;
+begin
+  if TG_TABLE_NAME = 'comments' then
+    v_source_kind := 'comment';
+    v_body := NEW.body;
+    v_task_id := NEW.task_id;
+    v_topic_id := null;
+    v_author := NEW.author_id;
+  elsif TG_TABLE_NAME = 'note_messages' then
+    v_source_kind := 'note_message';
+    v_body := NEW.body;
+    v_task_id := null;
+    v_topic_id := NEW.topic_id;
+    v_author := NEW.author_id;
+  else
+    return NEW;
+  end if;
+
+  -- For each profile (other than the author), if the body contains
+  -- @<their display_name> as a discrete token (case-insensitive,
+  -- followed by word boundary), write a mention. Display names here
+  -- are simple identifiers (no regex meta-chars), so direct interp
+  -- is safe.
+  for m_user in
+    select p.id, p.display_name
+    from public.profiles p
+    where p.id is distinct from v_author
+  loop
+    if v_body ~* ('@' || m_user.display_name || '\M')
+    then
+      insert into public.mentions
+        (source_kind, source_id, task_id, topic_id, mentioned_user_id, created_by)
+      values
+        (v_source_kind, NEW.id, v_task_id, v_topic_id, m_user.id, v_author)
+      on conflict (source_kind, source_id, mentioned_user_id) do nothing;
+    end if;
+  end loop;
+
+  return NEW;
+end;
+$$;
+
+drop trigger if exists comments_parse_mentions on public.comments;
+create trigger comments_parse_mentions
+  after insert on public.comments
+  for each row execute function public.parse_mentions();
+
+drop trigger if exists note_messages_parse_mentions on public.note_messages;
+create trigger note_messages_parse_mentions
+  after insert on public.note_messages
+  for each row execute function public.parse_mentions();
 
 -- ═══════════════════════════════════════════════════════════════
 -- Seed data (matches the old src/state/initial.ts exactly)
@@ -283,6 +375,7 @@ alter table public.budget_items       enable row level security;
 alter table public.attachments        enable row level security;
 alter table public.notes_topics       enable row level security;
 alter table public.note_messages      enable row level security;
+alter table public.mentions           enable row level security;
 
 -- profiles: anyone logged in can read both profiles; you can only edit your own.
 drop policy if exists "profiles_read" on public.profiles;
@@ -366,6 +459,21 @@ create policy "note_messages_update" on public.note_messages for update
 create policy "note_messages_delete" on public.note_messages for delete
   to authenticated using (author_id = auth.uid());
 
+-- mentions: only the mentioned user sees + can update (mark seen) /
+-- delete their own. Inserts only happen via the trigger above
+-- (security definer), so no insert policy is needed.
+drop policy if exists "mentions_read"   on public.mentions;
+drop policy if exists "mentions_update" on public.mentions;
+drop policy if exists "mentions_delete" on public.mentions;
+
+create policy "mentions_read"   on public.mentions for select
+  to authenticated using (mentioned_user_id = auth.uid());
+create policy "mentions_update" on public.mentions for update
+  to authenticated using (mentioned_user_id = auth.uid())
+  with check (mentioned_user_id = auth.uid());
+create policy "mentions_delete" on public.mentions for delete
+  to authenticated using (mentioned_user_id = auth.uid());
+
 -- ═══════════════════════════════════════════════════════════════
 -- Storage — a private bucket for task attachments + policies so
 -- authenticated users can read / upload / delete objects in it.
@@ -414,7 +522,7 @@ alter default privileges in schema public grant all on routines to anon, authent
 do $$
 declare t text;
 begin
-  foreach t in array array['tasks','comments','budget_items','project_settings','attachments','notes_topics','note_messages']
+  foreach t in array array['tasks','comments','budget_items','project_settings','attachments','notes_topics','note_messages','mentions']
   loop
     begin
       execute format('alter publication supabase_realtime add table public.%I', t);

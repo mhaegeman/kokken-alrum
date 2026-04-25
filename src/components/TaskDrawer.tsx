@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Attachment, Task, TaskPriority, TaskStatus } from '../types';
 import { useStore } from '../state/store';
 import { getAttachmentSignedUrl } from '../lib/api';
 import type { Profile } from '../lib/auth';
 import { Avatar } from './Avatar';
 import { formatDateShort } from '../lib/format';
+import { renderMarkdown } from '../lib/markdown';
 
 interface Props {
   openTaskId: number | null;
@@ -76,11 +77,35 @@ function DrawerBody({
 }) {
   const state = useStore((s) => s.state);
   const updateTask = useStore((s) => s.updateTask);
+  const deleteTask = useStore((s) => s.deleteTask);
   const addTaskComment = useStore((s) => s.addTaskComment);
   const deleteTaskComment = useStore((s) => s.deleteTaskComment);
   const uploadTaskAttachment = useStore((s) => s.uploadTaskAttachment);
   const addTaskLink = useStore((s) => s.addTaskLink);
   const deleteTaskAttachment = useStore((s) => s.deleteTaskAttachment);
+  const markMentionsSeen = useStore((s) => s.markMentionsSeen);
+
+  const mentionNames = useMemo(
+    () => Object.values(profilesById).map((p) => p.display_name),
+    [profilesById],
+  );
+
+  // Mark this task's unread mentions for me as seen when the drawer opens.
+  useEffect(() => {
+    if (!currentUserId) return;
+    const ids = state.mentions
+      .filter(
+        (m) =>
+          m.mentionedUserId === currentUserId &&
+          !m.seenAt &&
+          m.taskId === task.id,
+      )
+      .map((m) => m.id);
+    if (ids.length > 0) markMentionsSeen(ids);
+    // We intentionally re-run when the task changes; not when state.mentions
+    // updates, to avoid loops as we mark them seen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id, currentUserId]);
 
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description);
@@ -146,6 +171,22 @@ function DrawerBody({
         <span className="drawer-crumb">
           Phase {task.phase} · {state.phases[task.phase]?.name ?? '—'}
         </span>
+        <button
+          className="icon-btn danger drawer-delete"
+          onClick={() => {
+            if (
+              confirm(
+                `Delete task "${task.title}"?\nThis will also remove its comments and attachments. This cannot be undone.`,
+              )
+            ) {
+              deleteTask(task.id);
+              onClose();
+            }
+          }}
+          title="Delete task"
+        >
+          Delete
+        </button>
       </div>
 
       <div className="drawer-scroll">
@@ -338,7 +379,12 @@ function DrawerBody({
                     )}
                     <span className="comment-date tnum">{c.date}</span>
                   </div>
-                  <div className="comment-text">{c.text}</div>
+                  <div
+                    className="comment-text comment-rendered"
+                    dangerouslySetInnerHTML={{
+                      __html: renderMarkdown(c.text, { mentionNames }),
+                    }}
+                  />
                   {c.id !== undefined && c.authorId === currentUserId && (
                     <button
                       className="comment-del"
@@ -355,7 +401,7 @@ function DrawerBody({
             <div className="comment-add">
               <input
                 type="text"
-                placeholder={canEdit ? 'Add a comment…' : 'Sign in to comment'}
+                placeholder={canEdit ? 'Add a comment… (try @max or @karo)' : 'Sign in to comment'}
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
                 onKeyDown={(e) => {

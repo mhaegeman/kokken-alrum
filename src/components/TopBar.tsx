@@ -1,14 +1,21 @@
 import { useStore, exportJson } from '../state/store';
 import { signOut, type Profile } from '../lib/auth';
 import { Avatar } from './Avatar';
+import { MentionsBell } from './MentionsBell';
 import type { ViewId } from '../types';
 
 export function TopBar({
   onHome,
   profile,
+  profilesById,
+  onOpenTask,
+  onOpenTopic,
 }: {
   onHome: (v: ViewId) => void;
   profile: Profile | null;
+  profilesById: Record<string, Profile>;
+  onOpenTask: (taskId: number) => void;
+  onOpenTopic: (topicId: number) => void;
 }) {
   const state = useStore((s) => s.state);
 
@@ -33,6 +40,15 @@ export function TopBar({
             <Avatar user="max" title="Max" />
             <Avatar user="karo" title="Karo" />
           </div>
+
+          {profile && (
+            <MentionsBell
+              currentUserId={profile.id}
+              profilesById={profilesById}
+              onOpenTask={onOpenTask}
+              onOpenTopic={onOpenTopic}
+            />
+          )}
 
           <div className="menu">
             <button className="icon-btn" onClick={() => exportJson(state)}>

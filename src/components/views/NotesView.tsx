@@ -8,32 +8,60 @@ import { renderMarkdown } from '../../lib/markdown';
 interface Props {
   currentUserId: string | null;
   profilesById: Record<string, Profile>;
+  selectedTopicId: number | null;
+  onSelectTopic: (id: number | null) => void;
 }
 
-export function NotesView({ currentUserId, profilesById }: Props) {
+export function NotesView({
+  currentUserId,
+  profilesById,
+  selectedTopicId,
+  onSelectTopic,
+}: Props) {
   const state = useStore((s) => s.state);
   const createTopic = useStore((s) => s.createTopic);
   const renameTopic = useStore((s) => s.renameTopic);
   const deleteTopic = useStore((s) => s.deleteTopic);
   const addNoteMessage = useStore((s) => s.addNoteMessage);
   const deleteNoteMessage = useStore((s) => s.deleteNoteMessage);
+  const markMentionsSeen = useStore((s) => s.markMentionsSeen);
 
   const topics = state.topics;
   const messages = state.messages;
 
-  const [selectedId, setSelectedId] = useState<number | null>(
-    topics.length > 0 ? topics[0].id : null,
+  const mentionNames = useMemo(
+    () => Object.values(profilesById).map((p) => p.display_name),
+    [profilesById],
   );
 
   // Auto-select the first topic once data loads / topics change.
   useEffect(() => {
-    if (selectedId == null && topics.length > 0) {
-      setSelectedId(topics[0].id);
+    if (selectedTopicId == null && topics.length > 0) {
+      onSelectTopic(topics[0].id);
     }
-    if (selectedId != null && !topics.find((t) => t.id === selectedId)) {
-      setSelectedId(topics[0]?.id ?? null);
+    if (
+      selectedTopicId != null &&
+      !topics.find((t) => t.id === selectedTopicId)
+    ) {
+      onSelectTopic(topics[0]?.id ?? null);
     }
-  }, [topics, selectedId]);
+  }, [topics, selectedTopicId, onSelectTopic]);
+
+  // When a topic is opened, mark its unread mentions for me as seen.
+  useEffect(() => {
+    if (!currentUserId || selectedTopicId == null) return;
+    const ids = state.mentions
+      .filter(
+        (m) =>
+          m.mentionedUserId === currentUserId &&
+          !m.seenAt &&
+          m.topicId === selectedTopicId,
+      )
+      .map((m) => m.id);
+    if (ids.length > 0) markMentionsSeen(ids);
+    // Don't depend on state.mentions to avoid loops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTopicId, currentUserId]);
 
   const messagesByTopic = useMemo(() => {
     const m = new Map<number, NoteMessage[]>();
@@ -45,15 +73,15 @@ export function NotesView({ currentUserId, profilesById }: Props) {
     return m;
   }, [messages]);
 
-  const selectedTopic = topics.find((t) => t.id === selectedId) ?? null;
-  const selectedMessages = selectedId
-    ? messagesByTopic.get(selectedId) ?? []
+  const selectedTopic = topics.find((t) => t.id === selectedTopicId) ?? null;
+  const selectedMessages = selectedTopicId
+    ? messagesByTopic.get(selectedTopicId) ?? []
     : [];
 
   const onCreateTopic = async (title: string) => {
     if (!currentUserId) return;
     const id = await createTopic(title, currentUserId);
-    if (id != null) setSelectedId(id);
+    if (id != null) onSelectTopic(id);
   };
 
   return (
@@ -61,8 +89,8 @@ export function NotesView({ currentUserId, profilesById }: Props) {
       <TopicSidebar
         topics={topics}
         messagesByTopic={messagesByTopic}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
+        selectedId={selectedTopicId}
+        onSelect={onSelectTopic}
         onCreate={onCreateTopic}
         canCreate={!!currentUserId}
       />
@@ -74,6 +102,7 @@ export function NotesView({ currentUserId, profilesById }: Props) {
             messages={selectedMessages}
             currentUserId={currentUserId}
             profilesById={profilesById}
+            mentionNames={mentionNames}
             onSend={(body) =>
               currentUserId &&
               addNoteMessage(selectedTopic.id, body, currentUserId)
@@ -89,7 +118,7 @@ export function NotesView({ currentUserId, profilesById }: Props) {
                 deleteTopic(selectedTopic.id);
               }
             }}
-            onBack={() => setSelectedId(null)}
+            onBack={() => onSelectTopic(null)}
           />
         ) : (
           <div className="notes-empty">
@@ -212,6 +241,7 @@ function TopicThread({
   messages,
   currentUserId,
   profilesById,
+  mentionNames,
   onSend,
   onDeleteMessage,
   onRename,
@@ -222,6 +252,7 @@ function TopicThread({
   messages: NoteMessage[];
   currentUserId: string | null;
   profilesById: Record<string, Profile>;
+  mentionNames: string[];
   onSend: (body: string) => void;
   onDeleteMessage: (id: number) => void;
   onRename: (title: string) => void;
@@ -354,7 +385,9 @@ function TopicThread({
                 </div>
                 <div
                   className="note-message-body"
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(m.body) }}
+                  dangerouslySetInnerHTML={{
+                    __html: renderMarkdown(m.body, { mentionNames }),
+                  }}
                 />
               </div>
             </div>
@@ -367,7 +400,7 @@ function TopicThread({
           rows={2}
           placeholder={
             currentUserId
-              ? 'Reply… (Enter to send, Shift+Enter for newline)'
+              ? 'Reply… (Enter to send, Shift+Enter newline, try @max or @karo)'
               : 'Sign in to reply'
           }
           value={draft}

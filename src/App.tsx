@@ -10,6 +10,8 @@ import { TimelineView } from './components/views/TimelineView';
 import { BudgetView } from './components/views/BudgetView';
 import { NotesView } from './components/views/NotesView';
 import { TaskDrawer } from './components/TaskDrawer';
+import { Toaster } from './components/Toaster';
+import { HomeSkeleton } from './components/Skeleton';
 import { useAuth, type Profile } from './lib/auth';
 import { useStore } from './state/store';
 
@@ -43,12 +45,7 @@ export function App() {
     return <LoginScreen />;
   }
 
-  return (
-    <Authenticated
-      profile={profile}
-      profiles={profiles}
-    />
-  );
+  return <Authenticated profile={profile} profiles={profiles} />;
 }
 
 function Authenticated({
@@ -60,6 +57,7 @@ function Authenticated({
 }) {
   const [view, setView] = useState<ViewId>('home');
   const [openTaskId, setOpenTaskId] = useState<number | null>(null);
+  const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null);
 
   const loadFromServer = useStore((s) => s.loadFromServer);
   const startRealtime = useStore((s) => s.startRealtime);
@@ -80,19 +78,25 @@ function Authenticated({
 
   const onOpenTask = (id: number) => setOpenTaskId(id);
   const onCloseTask = () => setOpenTaskId(null);
+  const onOpenTopic = (id: number) => {
+    setView('notes');
+    setSelectedTopicId(id);
+  };
 
   const innerHeader = view !== 'home' ? HEADERS[view] : null;
 
   return (
     <>
-      <TopBar onHome={setView} profile={profile} />
+      <TopBar
+        onHome={setView}
+        profile={profile}
+        profilesById={profilesById}
+        onOpenTask={onOpenTask}
+        onOpenTopic={onOpenTopic}
+      />
       <Nav current={view} onChange={setView} />
       <main className="container">
-        {status === 'loading' && (
-          <p className="empty" style={{ paddingTop: 60 }}>
-            Loading…
-          </p>
-        )}
+        {(status === 'loading' || status === 'idle') && <HomeSkeleton />}
         {status === 'error' && (
           <div
             className="login-error"
@@ -104,7 +108,11 @@ function Authenticated({
         {status === 'ready' && (
           <>
             {view === 'home' ? (
-              <HomeView onNavigate={setView} onOpenTask={onOpenTask} />
+              <HomeView
+                onNavigate={setView}
+                onOpenTask={onOpenTask}
+                onOpenTopic={onOpenTopic}
+              />
             ) : (
               <>
                 {innerHeader && (
@@ -122,6 +130,8 @@ function Authenticated({
                     <NotesView
                       currentUserId={profile?.id ?? null}
                       profilesById={profilesById}
+                      selectedTopicId={selectedTopicId}
+                      onSelectTopic={setSelectedTopicId}
                     />
                   )}
                 </section>
@@ -151,6 +161,8 @@ function Authenticated({
         currentUserId={profile?.id ?? null}
         profilesById={profilesById}
       />
+
+      <Toaster />
     </>
   );
 }
