@@ -11,6 +11,7 @@ interface Props {
   profilesById: Record<string, Profile>;
   selectedTopicId: number | null;
   onSelectTopic: (id: number | null) => void;
+  isGuest: boolean;
 }
 
 export function NotesView({
@@ -18,6 +19,7 @@ export function NotesView({
   profilesById,
   selectedTopicId,
   onSelectTopic,
+  isGuest,
 }: Props) {
   const state = useStore((s) => s.state);
   const createTopic = useStore((s) => s.createTopic);
@@ -93,7 +95,7 @@ export function NotesView({
         selectedId={selectedTopicId}
         onSelect={onSelectTopic}
         onCreate={onCreateTopic}
-        canCreate={!!currentUserId}
+        canCreate={!!currentUserId && !isGuest}
       />
 
       <div className="notes-main">
@@ -104,6 +106,7 @@ export function NotesView({
             currentUserId={currentUserId}
             profilesById={profilesById}
             mentionNames={mentionNames}
+            isGuest={isGuest}
             onSend={(body, files) =>
               currentUserId &&
               addNoteMessage(selectedTopic.id, body, currentUserId, files)
@@ -243,6 +246,7 @@ function TopicThread({
   currentUserId,
   profilesById,
   mentionNames,
+  isGuest,
   onSend,
   onDeleteMessage,
   onRename,
@@ -254,6 +258,7 @@ function TopicThread({
   currentUserId: string | null;
   profilesById: Record<string, Profile>;
   mentionNames: string[];
+  isGuest: boolean;
   onSend: (body: string, files: File[]) => void;
   onDeleteMessage: (id: number) => void;
   onRename: (title: string) => void;
@@ -343,7 +348,7 @@ function TopicThread({
     setEditingTitle(false);
   };
 
-  const canEditTopic = topic.createdBy === currentUserId;
+  const canEditTopic = !isGuest && topic.createdBy === currentUserId;
   const creator = topic.createdBy ? profilesById[topic.createdBy] : null;
 
   return (

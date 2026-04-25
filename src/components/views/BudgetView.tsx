@@ -8,9 +8,11 @@ import type { Profile } from '../../lib/auth';
 export function BudgetView({
   currentUserId,
   profilesById,
+  isGuest,
 }: {
   currentUserId: string | null;
   profilesById: Record<string, Profile>;
+  isGuest: boolean;
 }) {
   const state = useStore((s) => s.state);
   const updateBudgetItem = useStore((s) => s.updateBudgetItem);
@@ -79,22 +81,28 @@ export function BudgetView({
         </div>
         <div className="stat">
           <p className="stat-label">Budget target</p>
-          <p
-            className="stat-value"
-            contentEditable
-            suppressContentEditableWarning
-            style={{ outline: 'none' }}
-            onBlur={(e) => {
-              const v = parseInt(
-                (e.target.textContent || '').replace(/\D/g, ''),
-                10,
-              ) || 0;
-              setBudgetTarget(v);
-            }}
-          >
-            {target}
-          </p>
-          <p className="stat-sub">click to edit</p>
+          {isGuest ? (
+            <p className="stat-value">{target}</p>
+          ) : (
+            <>
+              <p
+                className="stat-value"
+                contentEditable
+                suppressContentEditableWarning
+                style={{ outline: 'none' }}
+                onBlur={(e) => {
+                  const v = parseInt(
+                    (e.target.textContent || '').replace(/\D/g, ''),
+                    10,
+                  ) || 0;
+                  setBudgetTarget(v);
+                }}
+              >
+                {target}
+              </p>
+              <p className="stat-sub">click to edit</p>
+            </>
+          )}
         </div>
       </div>
 
@@ -151,47 +159,69 @@ export function BudgetView({
                 return (
                   <div key={item.id}>
                     <div className="budget-item">
-                      <input
-                        type="text"
-                        value={item.name}
-                        onChange={(e) =>
-                          updateBudgetItem(item.id, { name: e.target.value })
-                        }
-                      />
-                      <select
-                        value={item.category}
-                        onChange={(e) =>
-                          updateBudgetItem(item.id, { category: e.target.value })
-                        }
-                      >
-                        {Object.entries(cats).map(([k, v]) => (
-                          <option key={k} value={k}>
-                            {v}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        min={0}
-                        step={100}
-                        className="num"
-                        value={item.estimate || 0}
-                        onChange={(e) =>
-                          updateBudgetItem(item.id, {
-                            estimate: +e.target.value || 0,
-                          })
-                        }
-                      />
-                      <input
-                        type="number"
-                        min={0}
-                        step={100}
-                        className="num"
-                        value={item.actual || 0}
-                        onChange={(e) =>
-                          updateBudgetItem(item.id, { actual: +e.target.value || 0 })
-                        }
-                      />
+                      {isGuest ? (
+                        <span className="budget-item-readonly">{item.name}</span>
+                      ) : (
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) =>
+                            updateBudgetItem(item.id, { name: e.target.value })
+                          }
+                        />
+                      )}
+                      {isGuest ? (
+                        <span className="budget-item-readonly">
+                          {cats[item.category] || item.category}
+                        </span>
+                      ) : (
+                        <select
+                          value={item.category}
+                          onChange={(e) =>
+                            updateBudgetItem(item.id, { category: e.target.value })
+                          }
+                        >
+                          {Object.entries(cats).map(([k, v]) => (
+                            <option key={k} value={k}>
+                              {v}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {isGuest ? (
+                        <span className="budget-item-readonly num tnum">
+                          {item.estimate || 0}
+                        </span>
+                      ) : (
+                        <input
+                          type="number"
+                          min={0}
+                          step={100}
+                          className="num"
+                          value={item.estimate || 0}
+                          onChange={(e) =>
+                            updateBudgetItem(item.id, {
+                              estimate: +e.target.value || 0,
+                            })
+                          }
+                        />
+                      )}
+                      {isGuest ? (
+                        <span className="budget-item-readonly num tnum">
+                          {item.actual || 0}
+                        </span>
+                      ) : (
+                        <input
+                          type="number"
+                          min={0}
+                          step={100}
+                          className="num"
+                          value={item.actual || 0}
+                          onChange={(e) =>
+                            updateBudgetItem(item.id, { actual: +e.target.value || 0 })
+                          }
+                        />
+                      )}
                       <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                         <button
                           className={`paperclip-btn ${attachCount > 0 ? 'has-attach' : ''}`}
@@ -204,17 +234,19 @@ export function BudgetView({
                         >
                           📎{attachCount > 0 ? ` ${attachCount}` : ''}
                         </button>
-                        <button
-                          className="del-btn"
-                          title="Delete item"
-                          onClick={() => {
-                            if (confirm(`Delete "${item.name}"?`)) {
-                              deleteBudgetItem(item.id);
-                            }
-                          }}
-                        >
-                          ✕
-                        </button>
+                        {!isGuest && (
+                          <button
+                            className="del-btn"
+                            title="Delete item"
+                            onClick={() => {
+                              if (confirm(`Delete "${item.name}"?`)) {
+                                deleteBudgetItem(item.id);
+                              }
+                            }}
+                          >
+                            ✕
+                          </button>
+                        )}
                       </div>
                     </div>
                     {isOpen && (
@@ -247,36 +279,38 @@ export function BudgetView({
           );
         })}
 
-        <div className="add-item-row">
-          <input
-            type="text"
-            placeholder="New item name…"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            style={{ flex: 2 }}
-          />
-          <select value={newCat} onChange={(e) => setNewCat(e.target.value)}>
-            {Object.entries(cats).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
-          </select>
-          <input
-            type="number"
-            placeholder="Estimate"
-            min={0}
-            step={100}
-            value={newEst}
-            onChange={(e) =>
-              setNewEst(e.target.value === '' ? '' : +e.target.value)
-            }
-            style={{ width: 100 }}
-          />
-          <button className="btn-primary" onClick={onAdd}>
-            Add
-          </button>
-        </div>
+        {!isGuest && (
+          <div className="add-item-row">
+            <input
+              type="text"
+              placeholder="New item name…"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              style={{ flex: 2 }}
+            />
+            <select value={newCat} onChange={(e) => setNewCat(e.target.value)}>
+              {Object.entries(cats).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              placeholder="Estimate"
+              min={0}
+              step={100}
+              value={newEst}
+              onChange={(e) =>
+                setNewEst(e.target.value === '' ? '' : +e.target.value)
+              }
+              style={{ width: 100 }}
+            />
+            <button className="btn-primary" onClick={onAdd}>
+              Add
+            </button>
+          </div>
+        )}
       </div>
     </>
   );

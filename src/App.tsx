@@ -4,6 +4,7 @@ import { TopBar } from './components/TopBar';
 import { Nav } from './components/Tabs';
 import { Stats } from './components/Stats';
 import { LoginScreen } from './components/LoginScreen';
+import { GuestInvitePage } from './components/GuestInvitePage';
 import { HomeView } from './components/views/HomeView';
 import { TasksView } from './components/views/TasksView';
 import { TimelineView } from './components/views/TimelineView';
@@ -34,26 +35,66 @@ const HEADERS: Record<Exclude<ViewId, 'home'>, { title: string; sub: string }> =
   },
 };
 
+// Read ?invite=… from the URL once on mount. We don't depend on a router,
+// so the only "navigation" we need is to drop the param after acceptance.
+function readInviteToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  const t = params.get('invite');
+  if (!t) return null;
+  // Defensive: only accept UUID-shaped tokens.
+  if (!/^[0-9a-f-]{32,40}$/i.test(t)) return null;
+  return t;
+}
+
+function clearInviteParam() {
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  url.searchParams.delete('invite');
+  window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+}
+
 export function App() {
-  const { loading: authLoading, session, profile, profiles } = useAuth();
+  const { loading: authLoading, session, profile, profiles, isGuest } = useAuth();
+  const [inviteToken, setInviteToken] = useState<string | null>(readInviteToken);
 
   if (authLoading) {
     return <LoadingSplash />;
+  }
+
+  // ?invite=<token> → show the guest landing page. We let it run even if
+  // there's already an authenticated session: a full member clicking
+  // their own invite by accident still gets a clear "this is for guests"
+  // page and can choose not to accept.
+  if (inviteToken) {
+    return (
+      <GuestInvitePage
+        token={inviteToken}
+        onAccepted={() => {
+          clearInviteParam();
+          setInviteToken(null);
+        }}
+      />
+    );
   }
 
   if (!session) {
     return <LoginScreen />;
   }
 
-  return <Authenticated profile={profile} profiles={profiles} />;
+  return (
+    <Authenticated profile={profile} profiles={profiles} isGuest={isGuest} />
+  );
 }
 
 function Authenticated({
   profile,
   profiles,
+  isGuest,
 }: {
   profile: Profile | null;
   profiles: Profile[];
+  isGuest: boolean;
 }) {
   const [view, setView] = useState<ViewId>('home');
   const [openTaskId, setOpenTaskId] = useState<number | null>(null);
@@ -93,6 +134,7 @@ function Authenticated({
         profilesById={profilesById}
         onOpenTask={onOpenTask}
         onOpenTopic={onOpenTopic}
+        isGuest={isGuest}
       />
       <Nav current={view} onChange={setView} />
       <main className="container">
@@ -123,7 +165,9 @@ function Authenticated({
                 )}
                 {view !== 'notes' && <Stats />}
                 <section>
-                  {view === 'tasks' && <TasksView onOpenTask={onOpenTask} />}
+                  {view === 'tasks' && (
+                    <TasksView onOpenTask={onOpenTask} isGuest={isGuest} />
+                  )}
                   {view === 'timeline' && (
                     <TimelineView onOpenTask={onOpenTask} />
                   )}
@@ -131,6 +175,7 @@ function Authenticated({
                     <BudgetView
                       currentUserId={profile?.id ?? null}
                       profilesById={profilesById}
+                      isGuest={isGuest}
                     />
                   )}
                   {view === 'notes' && (
@@ -139,6 +184,7 @@ function Authenticated({
                       profilesById={profilesById}
                       selectedTopicId={selectedTopicId}
                       onSelectTopic={setSelectedTopicId}
+                      isGuest={isGuest}
                     />
                   )}
                 </section>
@@ -167,6 +213,7 @@ function Authenticated({
         onClose={onCloseTask}
         currentUserId={profile?.id ?? null}
         profilesById={profilesById}
+        isGuest={isGuest}
       />
 
       <Toaster />

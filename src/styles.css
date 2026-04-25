@@ -2555,3 +2555,211 @@ select:focus, input:focus {
   .notes-wrap:not(.has-thread) .notes-main { display: none; }
   .notes-back-btn { display: inline-flex; }
 }
+
+/* ─── guest mode + invites ─────────────────────────────────── */
+
+.guest-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-2, #eee);
+  border: 1px solid var(--border, #ddd);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-2, #666);
+  vertical-align: 1px;
+}
+
+.drawer-title-readonly {
+  font-size: 22px;
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.drawer-readonly-text {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.drawer-readonly-empty {
+  margin: 0;
+  color: var(--text-3, #999);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.task-meta-readonly {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 18px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.task-meta-readonly .meta-label {
+  color: var(--text-2, #666);
+  font-size: 12px;
+  margin-right: 4px;
+}
+
+.budget-item-readonly {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  font-size: 14px;
+  color: var(--text);
+  min-height: 32px;
+}
+
+.budget-item-readonly.num {
+  justify-content: flex-end;
+}
+
+/* Invites modal — shares the drawer-backdrop overlay. */
+.invites-modal {
+  position: fixed;
+  z-index: 60;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #ddd);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.invites-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.invites-modal-head h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.invites-modal-sub {
+  margin: 0;
+  color: var(--text-2, #666);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.invites-create {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+  border: 1px dashed var(--border, #ddd);
+  border-radius: 10px;
+}
+
+.invites-create input[type='text'] {
+  flex: 2;
+  min-width: 180px;
+  padding: 8px 10px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.invites-create select {
+  padding: 8px 10px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 8px;
+  font: inherit;
+  background: var(--surface, #fff);
+}
+
+.invites-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.invites-empty {
+  margin: 0;
+  padding: 14px;
+  color: var(--text-3, #999);
+  font-size: 13px;
+  text-align: center;
+}
+
+.invite-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+}
+
+.invite-row.invite-revoked,
+.invite-row.invite-expired {
+  opacity: 0.6;
+}
+
+.invite-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.invite-row-top {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.invite-row-url {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--text-2, #666);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.invite-row-meta {
+  font-size: 12px;
+  color: var(--text-2, #666);
+  margin-top: 2px;
+}
+
+.invite-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.invite-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #ddd);
+  color: var(--text-2, #666);
+}
+
+.invite-badge-active   { background: #e7f3ec; border-color: #cfe5d6; color: #2c6a3f; }
+.invite-badge-revoked  { background: #fbe7e7; border-color: #f3cfcf; color: #8c2828; }
+.invite-badge-expired  { background: #f1efe4; border-color: #e3dfc8; color: #7a6a3a; }
+

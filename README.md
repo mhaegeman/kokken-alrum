@@ -29,9 +29,20 @@ npm run dev
 Do this once in the Supabase dashboard for the project:
 
 1. **Run the schema.** Supabase Dashboard → **SQL Editor** → paste the entire contents of `supabase/schema.sql` and run. Creates tables, RLS policies, seed data, the realtime publication, and a private `attachments` storage bucket with its access policies. The script is idempotent — re-running it is safe, so re-run after pulling any schema changes.
-2. **Disable sign-ups.** **Authentication → Providers → Email** → turn **Enable sign-ups** OFF. The only two people who can ever sign in are the ones you invite in the next step.
-3. **Invite the two users.** **Authentication → Users** → **Invite user** → enter `maximehaegeman@gmail.com` and then `karoline.j.geiker@gmail.com`. Each person clicks the email link to set up their account. The schema's trigger fills in their profile (display name + avatar) automatically when the `auth.users` row is created.
-4. **Set Site URL.** **Authentication → URL Configuration** → Site URL = `https://mhaegeman.github.io/kokken-alrum/`. Also add it to **Additional redirect URLs** so magic links work.
+2. **Disable email sign-ups.** **Authentication → Providers → Email** → turn **Enable sign-ups** OFF. The only two people who can ever sign in via email are the ones you invite in the next step.
+3. **Enable anonymous sign-ins.** **Authentication → Providers** → toggle **Allow anonymous sign-ins** ON. Guest invite links use anonymous Supabase sessions; the schema's RLS policies keep guests strictly read-only on shared data.
+4. **Invite the two users.** **Authentication → Users** → **Invite user** → enter `maximehaegeman@gmail.com` and then `karoline.j.geiker@gmail.com`. Each person clicks the email link to set up their account. The schema's trigger fills in their profile (display name + avatar) automatically when the `auth.users` row is created.
+5. **Set Site URL.** **Authentication → URL Configuration** → Site URL = `https://mhaegeman.github.io/kokken-alrum/`. Also add it to **Additional redirect URLs** so magic links work.
+
+## Inviting a guest
+
+Max or Karo can share a read-mostly view of the project with a friend, family member or contractor:
+
+1. Click **Invite** in the top bar (visible only to full members).
+2. Optionally label the invite ("Mom", "Builder", …) and pick an expiry. Click **Create invite link** — the link is copied to your clipboard.
+3. Send that link to the guest. When they open it they pick a display name, get an anonymous Supabase session, and land in the app.
+
+Guests can browse every view and post comments, replies and document uploads (files / links). They cannot edit or delete tasks, budget items, topics or anyone else's content — both the UI and the database RLS policies enforce that. Revoke a link any time from the same **Invite** panel.
 
 ## GitHub Pages setup (one-time)
 

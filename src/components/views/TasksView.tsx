@@ -8,8 +8,10 @@ type PriorityFilter = TaskPriority | 'all';
 
 export function TasksView({
   onOpenTask,
+  isGuest,
 }: {
   onOpenTask: (taskId: number) => void;
+  isGuest: boolean;
 }) {
   const state = useStore((s) => s.state);
   const addTask = useStore((s) => s.addTask);
@@ -71,16 +73,18 @@ export function TasksView({
           <option value="low">Low</option>
         </select>
 
-        <button
-          className="btn-quiet"
-          style={{ marginLeft: 'auto' }}
-          onClick={() => setAdding((v) => !v)}
-        >
-          {adding ? 'Cancel' : '+ New task'}
-        </button>
+        {!isGuest && (
+          <button
+            className="btn-quiet"
+            style={{ marginLeft: 'auto' }}
+            onClick={() => setAdding((v) => !v)}
+          >
+            {adding ? 'Cancel' : '+ New task'}
+          </button>
+        )}
       </div>
 
-      {adding && (
+      {adding && !isGuest && (
         <NewTaskForm
           phaseEntries={phaseEntries}
           defaultPhase={firstPhaseId}

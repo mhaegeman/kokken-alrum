@@ -11,6 +11,7 @@ interface Props {
   onClose: () => void;
   currentUserId: string | null;
   profilesById: Record<string, Profile>;
+  isGuest: boolean;
 }
 
 export function TaskDrawer({
@@ -18,6 +19,7 @@ export function TaskDrawer({
   onClose,
   currentUserId,
   profilesById,
+  isGuest,
 }: Props) {
   const task = useStore((s) =>
     openTaskId != null ? s.state.tasks.find((t) => t.id === openTaskId) : undefined,
@@ -56,6 +58,7 @@ export function TaskDrawer({
             onClose={onClose}
             currentUserId={currentUserId}
             profilesById={profilesById}
+            isGuest={isGuest}
           />
         )}
       </aside>
@@ -68,11 +71,13 @@ function DrawerBody({
   onClose,
   currentUserId,
   profilesById,
+  isGuest,
 }: {
   task: Task;
   onClose: () => void;
   currentUserId: string | null;
   profilesById: Record<string, Profile>;
+  isGuest: boolean;
 }) {
   const state = useStore((s) => s.state);
   const updateTask = useStore((s) => s.updateTask);
@@ -112,7 +117,10 @@ function DrawerBody({
 
   const titleById = (id: number) =>
     state.tasks.find((tt) => tt.id === id)?.title ?? '?';
-  const canEdit = !!currentUserId;
+  // Anyone authenticated (incl. guests) can post comments and upload
+  // attachments; only full members can edit / delete the task itself.
+  const canContribute = !!currentUserId;
+  const canModify = canContribute && !isGuest;
 
   const saveTitle = () => {
     const t = title.trim();
@@ -142,36 +150,42 @@ function DrawerBody({
         <span className="drawer-crumb">
           Phase {task.phase} · {state.phases[task.phase]?.name ?? '—'}
         </span>
-        <button
-          className="icon-btn danger drawer-delete"
-          onClick={() => {
-            if (
-              confirm(
-                `Delete task "${task.title}"?\nThis will also remove its comments and attachments. This cannot be undone.`,
-              )
-            ) {
-              deleteTask(task.id);
-              onClose();
-            }
-          }}
-          title="Delete task"
-        >
-          Delete
-        </button>
+        {canModify && (
+          <button
+            className="icon-btn danger drawer-delete"
+            onClick={() => {
+              if (
+                confirm(
+                  `Delete task "${task.title}"?\nThis will also remove its comments and attachments. This cannot be undone.`,
+                )
+              ) {
+                deleteTask(task.id);
+                onClose();
+              }
+            }}
+            title="Delete task"
+          >
+            Delete
+          </button>
+        )}
       </div>
 
       <div className="drawer-scroll">
         <div className="drawer-title-row">
           <span className="task-num drawer-task-num">#{task.id}</span>
-          <input
-            className="drawer-title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={saveTitle}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-            }}
-          />
+          {canModify ? (
+            <input
+              className="drawer-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onBlur={saveTitle}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              }}
+            />
+          ) : (
+            <h2 className="drawer-title drawer-title-readonly">{task.title}</h2>
+          )}
         </div>
 
         <div className="drawer-pills">
@@ -184,76 +198,108 @@ function DrawerBody({
 
         <section className="drawer-section">
           <h4>Description</h4>
-          <textarea
-            className="drawer-textarea"
-            rows={5}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            onBlur={saveDescription}
-            placeholder="What needs to happen for this task? Any notes, decisions, open questions…"
-          />
+          {canModify ? (
+            <textarea
+              className="drawer-textarea"
+              rows={5}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              onBlur={saveDescription}
+              placeholder="What needs to happen for this task? Any notes, decisions, open questions…"
+            />
+          ) : task.description ? (
+            <p className="drawer-readonly-text">{task.description}</p>
+          ) : (
+            <p className="drawer-readonly-empty">No description.</p>
+          )}
         </section>
 
         <section className="drawer-section">
           <h4>Details</h4>
-          <div className="task-meta">
-            <div className="field">
-              <label>Status</label>
-              <select
-                value={task.status}
-                onChange={(e) =>
-                  updateTask(task.id, { status: e.target.value as TaskStatus })
-                }
-              >
-                <option value="not_started">Not started</option>
-                <option value="in_progress">In progress</option>
-                <option value="blocked">Blocked</option>
-                <option value="done">Done</option>
-              </select>
+          {canModify ? (
+            <div className="task-meta">
+              <div className="field">
+                <label>Status</label>
+                <select
+                  value={task.status}
+                  onChange={(e) =>
+                    updateTask(task.id, { status: e.target.value as TaskStatus })
+                  }
+                >
+                  <option value="not_started">Not started</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="done">Done</option>
+                </select>
+              </div>
+              <div className="field">
+                <label>Priority</label>
+                <select
+                  value={task.priority}
+                  onChange={(e) =>
+                    updateTask(task.id, { priority: e.target.value as TaskPriority })
+                  }
+                >
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+              <div className="field">
+                <label>Duration (days)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={task.duration || 0}
+                  onChange={(e) =>
+                    updateTask(task.id, {
+                      duration: Math.max(0, parseInt(e.target.value, 10) || 0),
+                    })
+                  }
+                />
+              </div>
+              <div className="field">
+                <label>Start date (override)</label>
+                <input
+                  type="date"
+                  value={task.start || ''}
+                  onChange={(e) => updateTask(task.id, { start: e.target.value })}
+                />
+              </div>
+              <div className="field">
+                <label>End date (override)</label>
+                <input
+                  type="date"
+                  value={task.end || ''}
+                  onChange={(e) => updateTask(task.id, { end: e.target.value })}
+                />
+              </div>
             </div>
-            <div className="field">
-              <label>Priority</label>
-              <select
-                value={task.priority}
-                onChange={(e) =>
-                  updateTask(task.id, { priority: e.target.value as TaskPriority })
-                }
-              >
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
+          ) : (
+            <div className="task-meta-readonly">
+              <div>
+                <span className="meta-label">Status:</span>{' '}
+                {task.status.replace('_', ' ')}
+              </div>
+              <div>
+                <span className="meta-label">Priority:</span> {task.priority}
+              </div>
+              <div>
+                <span className="meta-label">Duration:</span>{' '}
+                {task.duration || 0}d
+              </div>
+              {task.start && (
+                <div>
+                  <span className="meta-label">Start:</span> {task.start}
+                </div>
+              )}
+              {task.end && (
+                <div>
+                  <span className="meta-label">End:</span> {task.end}
+                </div>
+              )}
             </div>
-            <div className="field">
-              <label>Duration (days)</label>
-              <input
-                type="number"
-                min={0}
-                value={task.duration || 0}
-                onChange={(e) =>
-                  updateTask(task.id, {
-                    duration: Math.max(0, parseInt(e.target.value, 10) || 0),
-                  })
-                }
-              />
-            </div>
-            <div className="field">
-              <label>Start date (override)</label>
-              <input
-                type="date"
-                value={task.start || ''}
-                onChange={(e) => updateTask(task.id, { start: e.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label>End date (override)</label>
-              <input
-                type="date"
-                value={task.end || ''}
-                onChange={(e) => updateTask(task.id, { end: e.target.value })}
-              />
-            </div>
-          </div>
+          )}
           {task.deps && task.deps.length > 0 && (
             <div className="deps">
               <strong>Depends on:</strong>{' '}
@@ -266,7 +312,7 @@ function DrawerBody({
           <h4>Attachments ({task.attachments.length})</h4>
           <AttachmentList
             attachments={task.attachments}
-            canEdit={canEdit}
+            canEdit={canContribute}
             currentUserId={currentUserId}
             uploaderName={(id) =>
               id ? profilesById[id]?.display_name : undefined
@@ -328,15 +374,23 @@ function DrawerBody({
             <div className="comment-add">
               <input
                 type="text"
-                placeholder={canEdit ? 'Add a comment… (try @max or @karo)' : 'Sign in to comment'}
+                placeholder={
+                  canContribute
+                    ? 'Add a comment… (try @max or @karo)'
+                    : 'Sign in to comment'
+                }
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') onAddComment();
                 }}
-                disabled={!canEdit}
+                disabled={!canContribute}
               />
-              <button className="btn-primary" onClick={onAddComment} disabled={!canEdit}>
+              <button
+                className="btn-primary"
+                onClick={onAddComment}
+                disabled={!canContribute}
+              >
                 Add
               </button>
             </div>
