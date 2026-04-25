@@ -93,6 +93,10 @@ function DrawerBody({
     () => Object.values(profilesById).map((p) => p.display_name),
     [profilesById],
   );
+  const mentionContacts = useMemo(
+    () => state.contacts.map((c) => ({ id: c.id, name: c.name })),
+    [state.contacts],
+  );
 
   // Mark this task's unread mentions for me as seen when the drawer opens.
   useEffect(() => {
@@ -355,7 +359,7 @@ function DrawerBody({
                   <div
                     className="comment-text comment-rendered"
                     dangerouslySetInnerHTML={{
-                      __html: renderMarkdown(c.text, { mentionNames }),
+                      __html: renderMarkdown(c.text, { mentionNames, mentionContacts }),
                     }}
                   />
                   {c.id !== undefined && c.authorId === currentUserId && (

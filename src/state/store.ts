@@ -1,10 +1,11 @@
 import { create } from 'zustand';
-import type { AppState, BudgetItem, Task } from '../types';
+import type { AppState, BudgetItem, Contact, Task } from '../types';
 import type { Attachment } from '../types';
 import {
   loadAppState,
   addCommentRemote,
   addBudgetItemRemote,
+  addContactRemote,
   addLinkAttachment,
   addNoteMessageRemote,
   addTaskRemote,
@@ -12,12 +13,14 @@ import {
   deleteAttachmentRemote,
   deleteBudgetItemRemote,
   deleteCommentRemote,
+  deleteContactRemote,
   deleteNoteMessageRemote,
   deleteTaskRemote,
   deleteTopicRemote,
   markMentionsSeenRemote,
   subscribeToChanges,
   updateBudgetItemRemote,
+  updateContactRemote,
   updateSettingsRemote,
   updateTaskRemote,
   updateTopicRemote,
@@ -58,6 +61,7 @@ const EMPTY_STATE: AppState = {
   topics: [],
   messages: [],
   mentions: [],
+  contacts: [],
 };
 
 export type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -108,6 +112,13 @@ interface Store {
   deleteNoteMessage: (id: number) => Promise<void>;
 
   markMentionsSeen: (ids: number[]) => Promise<void>;
+
+  addContact: (
+    input: Omit<Contact, 'id' | 'createdBy' | 'createdAt' | 'updatedAt'>,
+    createdBy: string,
+  ) => Promise<number | null>;
+  updateContact: (id: number, patch: Partial<Contact>) => Promise<void>;
+  deleteContact: (id: number) => Promise<void>;
 }
 
 // Small helper: applies an optimistic patch, runs the remote mutation, and if
@@ -574,6 +585,52 @@ export const useStore = create<Store>()((set, get) => ({
           },
         }),
       () => markMentionsSeenRemote(ids),
+      () => get().loadFromServer(),
+    );
+  },
+
+  // ─── contacts ──────────────────────────────────────────
+
+  async addContact(input, createdBy) {
+    try {
+      const contact = await addContactRemote(input, createdBy);
+      const prev = get().state;
+      set({ state: { ...prev, contacts: [...prev.contacts, contact] } });
+      return contact.id;
+    } catch (e) {
+      toast.error('Could not add contact: ' + (e as Error).message);
+      return null;
+    }
+  },
+
+  async updateContact(id, patch) {
+    const prev = get().state;
+    await withOptimistic(
+      () =>
+        set({
+          state: {
+            ...prev,
+            contacts: prev.contacts.map((c) =>
+              c.id === id ? { ...c, ...patch } : c,
+            ),
+          },
+        }),
+      () => updateContactRemote(id, patch),
+      () => get().loadFromServer(),
+    );
+  },
+
+  async deleteContact(id) {
+    const prev = get().state;
+    await withOptimistic(
+      () =>
+        set({
+          state: {
+            ...prev,
+            contacts: prev.contacts.filter((c) => c.id !== id),
+          },
+        }),
+      () => deleteContactRemote(id),
       () => get().loadFromServer(),
     );
   },

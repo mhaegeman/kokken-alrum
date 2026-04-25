@@ -70,6 +70,20 @@ export interface AppState {
   topics: Topic[];
   messages: NoteMessage[];
   mentions: Mention[];
+  contacts: Contact[];
+}
+
+export interface Contact {
+  id: number;
+  name: string;
+  role: string;
+  phone: string;
+  email: string;
+  address: string;
+  notes: string;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type MentionSourceKind = 'comment' | 'note_message';
@@ -104,4 +118,4 @@ export interface NoteMessage {
   attachments: Attachment[];
 }
 
-export type ViewId = 'home' | 'tasks' | 'timeline' | 'budget' | 'notes';
+export type ViewId = 'home' | 'tasks' | 'timeline' | 'budget' | 'notes' | 'contacts';

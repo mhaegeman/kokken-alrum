@@ -6,6 +6,7 @@ const TABS: { id: ViewId; label: string }[] = [
   { id: 'timeline', label: 'Timeline' },
   { id: 'budget', label: 'Budget' },
   { id: 'notes', label: 'Notes' },
+  { id: 'contacts', label: 'Contacts' },
 ];
 
 export function Nav({
