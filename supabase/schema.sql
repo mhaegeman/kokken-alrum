@@ -189,10 +189,10 @@ alter table public.attachments alter column task_id drop not null;
 alter table public.attachments add column if not exists budget_item_id integer references public.budget_items(id) on delete cascade;
 
 alter table public.attachments drop constraint if exists attachments_payload_check;
-alter table public.attachments add constraint attachments_payload_check check (
-  ((task_id is not null) <> (budget_item_id is not null))
-  and ((kind = 'file' and storage_path is not null) or (kind = 'link' and url is not null))
-);
+-- The final XOR (task vs budget vs note_message) is installed in section
+-- 8a once note_messages exists. We can't add the 2-way version here
+-- because re-running on a DB that already has note_message attachments
+-- would reject those existing rows.
 
 create index if not exists attachments_budget_item_id_idx on public.attachments(budget_item_id);
 
