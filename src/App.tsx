@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ViewId } from './types';
 import { TopBar } from './components/TopBar';
 import { Nav } from './components/Tabs';
@@ -9,13 +9,14 @@ import { TasksView } from './components/views/TasksView';
 import { TimelineView } from './components/views/TimelineView';
 import { BudgetView } from './components/views/BudgetView';
 import { NotesView } from './components/views/NotesView';
-import { useAuth } from './lib/auth';
+import { TaskDrawer } from './components/TaskDrawer';
+import { useAuth, type Profile } from './lib/auth';
 import { useStore } from './state/store';
 
 const HEADERS: Record<Exclude<ViewId, 'home'>, { title: string; sub: string }> = {
   tasks: {
     title: 'Tasks',
-    sub: 'The full list, grouped by phase. Click a row to edit.',
+    sub: 'The full list, grouped by phase. Click a row to open it.',
   },
   timeline: {
     title: 'Timeline',
@@ -32,7 +33,7 @@ const HEADERS: Record<Exclude<ViewId, 'home'>, { title: string; sub: string }> =
 };
 
 export function App() {
-  const { loading: authLoading, session, profile } = useAuth();
+  const { loading: authLoading, session, profile, profiles } = useAuth();
 
   if (authLoading) {
     return <LoadingSplash />;
@@ -42,17 +43,24 @@ export function App() {
     return <LoginScreen />;
   }
 
-  return <Authenticated profileId={profile?.id ?? null} profile={profile} />;
+  return (
+    <Authenticated
+      profile={profile}
+      profiles={profiles}
+    />
+  );
 }
 
 function Authenticated({
-  profileId,
   profile,
+  profiles,
 }: {
-  profileId: string | null;
-  profile: ReturnType<typeof useAuth>['profile'];
+  profile: Profile | null;
+  profiles: Profile[];
 }) {
   const [view, setView] = useState<ViewId>('home');
+  const [openTaskId, setOpenTaskId] = useState<number | null>(null);
+
   const loadFromServer = useStore((s) => s.loadFromServer);
   const startRealtime = useStore((s) => s.startRealtime);
   const status = useStore((s) => s.status);
@@ -63,6 +71,15 @@ function Authenticated({
     const stop = startRealtime();
     return stop;
   }, [loadFromServer, startRealtime]);
+
+  const profilesById = useMemo(() => {
+    const m: Record<string, Profile> = {};
+    for (const p of profiles) m[p.id] = p;
+    return m;
+  }, [profiles]);
+
+  const onOpenTask = (id: number) => setOpenTaskId(id);
+  const onCloseTask = () => setOpenTaskId(null);
 
   const innerHeader = view !== 'home' ? HEADERS[view] : null;
 
@@ -87,7 +104,7 @@ function Authenticated({
         {status === 'ready' && (
           <>
             {view === 'home' ? (
-              <HomeView onNavigate={setView} />
+              <HomeView onNavigate={setView} onOpenTask={onOpenTask} />
             ) : (
               <>
                 {innerHeader && (
@@ -98,7 +115,7 @@ function Authenticated({
                 )}
                 {view !== 'notes' && <Stats />}
                 <section>
-                  {view === 'tasks' && <TasksView authorId={profileId} />}
+                  {view === 'tasks' && <TasksView onOpenTask={onOpenTask} />}
                   {view === 'timeline' && <TimelineView />}
                   {view === 'budget' && <BudgetView />}
                   {view === 'notes' && <NotesView />}
@@ -122,6 +139,13 @@ function Authenticated({
           </p>
         </div>
       </footer>
+
+      <TaskDrawer
+        openTaskId={openTaskId}
+        onClose={onCloseTask}
+        currentUserId={profile?.id ?? null}
+        profilesById={profilesById}
+      />
     </>
   );
 }

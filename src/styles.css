@@ -659,10 +659,40 @@ select:focus, input:focus {
   border-radius: var(--radius);
   padding: 14px 18px;
   margin-bottom: 6px;
-  transition: border-color 0.15s, transform 0.15s;
+  transition: border-color 0.15s, background 0.15s;
 }
 
 .task-row:hover { border-color: var(--border-strong); }
+
+.task-row-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.task-row-btn:hover { background: var(--linen); }
+
+.task-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.task-chip {
+  font-size: 11px;
+  color: var(--text-2);
+  background: var(--linen);
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
 .task-head {
   display: flex;
@@ -1193,3 +1223,288 @@ select:focus, input:focus {
 
 .login-who .avatar + .avatar { margin-left: -6px; }
 .login-who span { margin-left: 10px; }
+
+/* ── task drawer ────────────────────────────────────────── */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 22, 20, 0.32);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 40;
+}
+
+.drawer-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: min(640px, 100vw);
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.08);
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.2, 0.7, 0.3, 1);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+}
+
+.drawer.open { transform: translateX(0); }
+
+.drawer-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.drawer-close {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.drawer-crumb {
+  font-size: 12px;
+  color: var(--text-2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.drawer-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 28px 40px;
+}
+
+.drawer-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.drawer-task-num {
+  font-size: 14px;
+  color: var(--text-3);
+  padding-top: 6px;
+}
+
+.drawer-title {
+  font-family: var(--font-serif);
+  font-size: 32px;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  width: 100%;
+  padding: 4px 2px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-weight: 400;
+}
+
+.drawer-title:hover {
+  border-color: var(--border);
+}
+
+.drawer-title:focus {
+  outline: none;
+  border-color: var(--forest);
+  background: var(--surface);
+}
+
+.drawer-pills {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 28px;
+}
+
+.drawer-section {
+  padding-top: 24px;
+  margin-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.drawer-section:first-of-type {
+  padding-top: 0;
+  margin-top: 0;
+  border-top: none;
+}
+
+.drawer-section h4 {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin: 0 0 12px;
+}
+
+.drawer-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.drawer-section-head h4 { margin: 0; }
+
+.drawer-section-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.drawer-small-btn {
+  font-size: 13px;
+  padding: 6px 12px;
+}
+
+.drawer-textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+}
+
+.drawer-textarea:focus {
+  outline: none;
+  border-color: var(--forest);
+}
+
+/* ── attachments ────────────────────────────────────────── */
+.attachments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.attachment-empty {
+  color: var(--text-3);
+  font-size: 13px;
+  padding: 6px 0;
+  margin: 0;
+}
+
+.attachment-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--linen);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.attachment-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.attachment-name {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: var(--forest);
+  text-decoration: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+}
+
+.attachment-name:hover { text-decoration: underline; }
+.attachment-name:disabled { color: var(--text-3); cursor: default; }
+
+.attachment-meta {
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.add-link-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.add-link-row input[type="url"] {
+  flex: 2;
+  min-width: 200px;
+}
+
+/* ── drawer comments ────────────────────────────────────── */
+.drawer-comments .comment-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 12px 14px;
+  position: relative;
+}
+
+.comment-stacked .comment-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.comment-stacked .comment-meta b {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.comment-stacked .comment-date {
+  margin-left: auto;
+}
+
+.comment-stacked .comment-text {
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+
+.comment-stacked .comment-del {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+@media (max-width: 640px) {
+  .drawer { width: 100vw; }
+  .drawer-head, .drawer-scroll { padding-left: 20px; padding-right: 20px; }
+  .drawer-title { font-size: 24px; }
+}

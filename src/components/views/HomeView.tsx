@@ -5,7 +5,13 @@ import { diffDays, fmtMoney, formatDateShort } from '../../lib/format';
 import { ProgressRing } from '../ProgressRing';
 import type { ViewId } from '../../types';
 
-export function HomeView({ onNavigate }: { onNavigate: (v: ViewId) => void }) {
+export function HomeView({
+  onNavigate,
+  onOpenTask,
+}: {
+  onNavigate: (v: ViewId) => void;
+  onOpenTask: (taskId: number) => void;
+}) {
   const state = useStore((s) => s.state);
 
   const { pct, doneCount, totalCount } = useMemo(() => {
@@ -140,7 +146,7 @@ export function HomeView({ onNavigate }: { onNavigate: (v: ViewId) => void }) {
               <button
                 key={task.id}
                 className="next-up-item next-up-btn"
-                onClick={() => onNavigate('tasks')}
+                onClick={() => onOpenTask(task.id)}
               >
                 <span className={`next-up-dot phase-${task.phase}`} />
                 <div className="next-up-main">

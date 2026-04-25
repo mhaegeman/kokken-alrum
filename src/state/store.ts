@@ -1,15 +1,19 @@
 import { create } from 'zustand';
 import type { AppState, BudgetItem, Task } from '../types';
+import type { Attachment } from '../types';
 import {
   loadAppState,
   addCommentRemote,
   addBudgetItemRemote,
+  addLinkAttachment,
+  deleteAttachmentRemote,
   deleteBudgetItemRemote,
   deleteCommentRemote,
   subscribeToChanges,
   updateBudgetItemRemote,
   updateSettingsRemote,
   updateTaskRemote,
+  uploadFileAttachment,
 } from '../lib/api';
 
 const EMPTY_STATE: AppState = {
@@ -35,6 +39,10 @@ interface Store {
   updateTask: (id: number, patch: Partial<Task>) => Promise<void>;
   addTaskComment: (taskId: number, text: string, authorId: string) => Promise<void>;
   deleteTaskComment: (taskId: number, commentId: number) => Promise<void>;
+
+  uploadTaskAttachment: (taskId: number, file: File, uploaderId: string) => Promise<void>;
+  addTaskLink: (taskId: number, url: string, label: string, uploaderId: string) => Promise<void>;
+  deleteTaskAttachment: (taskId: number, attachment: Attachment) => Promise<void>;
 
   updateBudgetItem: (id: number, patch: Partial<BudgetItem>) => Promise<void>;
   addBudgetItem: (item: Omit<BudgetItem, 'id'>) => Promise<void>;
@@ -141,6 +149,68 @@ export const useStore = create<Store>()((set, get) => ({
           },
         }),
       () => deleteCommentRemote(commentId),
+      () => get().loadFromServer(),
+    );
+  },
+
+  // ─── attachments ────────────────────────────────────────
+
+  async uploadTaskAttachment(taskId, file, uploaderId) {
+    try {
+      const attachment = await uploadFileAttachment(taskId, file, uploaderId);
+      const prev = get().state;
+      set({
+        state: {
+          ...prev,
+          tasks: prev.tasks.map((t) =>
+            t.id === taskId
+              ? { ...t, attachments: [...t.attachments, attachment] }
+              : t,
+          ),
+        },
+      });
+    } catch (e) {
+      alert('Upload failed: ' + (e as Error).message);
+    }
+  },
+
+  async addTaskLink(taskId, url, label, uploaderId) {
+    try {
+      const attachment = await addLinkAttachment(taskId, url, label, uploaderId);
+      const prev = get().state;
+      set({
+        state: {
+          ...prev,
+          tasks: prev.tasks.map((t) =>
+            t.id === taskId
+              ? { ...t, attachments: [...t.attachments, attachment] }
+              : t,
+          ),
+        },
+      });
+    } catch (e) {
+      alert('Could not add link: ' + (e as Error).message);
+    }
+  },
+
+  async deleteTaskAttachment(taskId, attachment) {
+    const prev = get().state;
+    await withOptimistic(
+      () =>
+        set({
+          state: {
+            ...prev,
+            tasks: prev.tasks.map((t) =>
+              t.id === taskId
+                ? {
+                    ...t,
+                    attachments: t.attachments.filter((a) => a.id !== attachment.id),
+                  }
+                : t,
+            ),
+          },
+        }),
+      () => deleteAttachmentRemote(attachment),
       () => get().loadFromServer(),
     );
   },

@@ -90,9 +90,13 @@ create table if not exists public.tasks (
   deps integer[] not null default '{}',
   start_date date,
   end_date date,
+  description text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Forward-compat: add description column if upgrading an older schema.
+alter table public.tasks add column if not exists description text not null default '';
 
 -- Keep an auto-incrementing sequence so inserts from the client can use it.
 create sequence if not exists public.tasks_id_seq owned by public.tasks.id;
@@ -108,6 +112,26 @@ create table if not exists public.comments (
 );
 
 create index if not exists comments_task_id_idx on public.comments(task_id);
+
+-- ─── 6b. attachments (files or external links, per task) ────────
+create table if not exists public.attachments (
+  id bigserial primary key,
+  task_id integer not null references public.tasks(id) on delete cascade,
+  kind text not null check (kind in ('file','link')),
+  storage_path text,
+  url text,
+  filename text not null,
+  mime_type text,
+  size_bytes bigint,
+  uploaded_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  constraint attachments_payload_check check (
+    (kind = 'file' and storage_path is not null) or
+    (kind = 'link' and url is not null)
+  )
+);
+
+create index if not exists attachments_task_id_idx on public.attachments(task_id);
 
 -- ─── 7. budget_items ───────────────────────────────────────────
 create table if not exists public.budget_items (
@@ -229,6 +253,7 @@ alter table public.project_settings   enable row level security;
 alter table public.tasks              enable row level security;
 alter table public.comments           enable row level security;
 alter table public.budget_items       enable row level security;
+alter table public.attachments        enable row level security;
 
 -- profiles: anyone logged in can read both profiles; you can only edit your own.
 drop policy if exists "profiles_read" on public.profiles;
@@ -265,6 +290,61 @@ create policy "comments_update" on public.comments for update
 create policy "comments_delete" on public.comments for delete
   to authenticated using (author_id = auth.uid());
 
+-- attachments: anyone authed can read; can insert/update/delete only their own.
+drop policy if exists "attachments_read"   on public.attachments;
+drop policy if exists "attachments_insert" on public.attachments;
+drop policy if exists "attachments_update" on public.attachments;
+drop policy if exists "attachments_delete" on public.attachments;
+
+create policy "attachments_read"   on public.attachments for select
+  to authenticated using (true);
+create policy "attachments_insert" on public.attachments for insert
+  to authenticated with check (uploaded_by = auth.uid());
+create policy "attachments_update" on public.attachments for update
+  to authenticated using (uploaded_by = auth.uid()) with check (uploaded_by = auth.uid());
+create policy "attachments_delete" on public.attachments for delete
+  to authenticated using (uploaded_by = auth.uid());
+
+-- ═══════════════════════════════════════════════════════════════
+-- Storage — a private bucket for task attachments + policies so
+-- authenticated users can read / upload / delete objects in it.
+-- ═══════════════════════════════════════════════════════════════
+
+insert into storage.buckets (id, name, public)
+values ('attachments', 'attachments', false)
+on conflict (id) do nothing;
+
+drop policy if exists "attachments_bucket_read"   on storage.objects;
+drop policy if exists "attachments_bucket_insert" on storage.objects;
+drop policy if exists "attachments_bucket_update" on storage.objects;
+drop policy if exists "attachments_bucket_delete" on storage.objects;
+
+create policy "attachments_bucket_read"   on storage.objects for select
+  to authenticated using (bucket_id = 'attachments');
+create policy "attachments_bucket_insert" on storage.objects for insert
+  to authenticated with check (bucket_id = 'attachments');
+create policy "attachments_bucket_update" on storage.objects for update
+  to authenticated using (bucket_id = 'attachments');
+create policy "attachments_bucket_delete" on storage.objects for delete
+  to authenticated using (bucket_id = 'attachments');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Grants — on some Supabase projects the default table/sequence
+-- grants on schema public aren't in place, so the authenticated
+-- role gets "permission denied for table" errors even with RLS
+-- policies allowing the row. These statements make the schema
+-- work on any project; re-running them is a no-op.
+-- ═══════════════════════════════════════════════════════════════
+
+grant usage on schema public to anon, authenticated;
+grant all on all tables in schema public to anon, authenticated;
+grant all on all sequences in schema public to anon, authenticated;
+grant all on all routines in schema public to anon, authenticated;
+
+alter default privileges in schema public grant all on tables to anon, authenticated;
+alter default privileges in schema public grant all on sequences to anon, authenticated;
+alter default privileges in schema public grant all on routines to anon, authenticated;
+
 -- ═══════════════════════════════════════════════════════════════
 -- Realtime — let both clients see each other's changes live.
 -- (Adding a table twice errors; the DO-block makes this idempotent.)
@@ -273,7 +353,7 @@ create policy "comments_delete" on public.comments for delete
 do $$
 declare t text;
 begin
-  foreach t in array array['tasks','comments','budget_items','project_settings']
+  foreach t in array array['tasks','comments','budget_items','project_settings','attachments']
   loop
     begin
       execute format('alter publication supabase_realtime add table public.%I', t);

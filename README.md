@@ -28,7 +28,7 @@ npm run dev
 
 Do this once in the Supabase dashboard for the project:
 
-1. **Run the schema.** Supabase Dashboard → **SQL Editor** → paste the entire contents of `supabase/schema.sql` and run. Creates tables, RLS policies, seed data, and the realtime publication. The script is idempotent — re-running it is safe.
+1. **Run the schema.** Supabase Dashboard → **SQL Editor** → paste the entire contents of `supabase/schema.sql` and run. Creates tables, RLS policies, seed data, the realtime publication, and a private `attachments` storage bucket with its access policies. The script is idempotent — re-running it is safe, so re-run after pulling any schema changes.
 2. **Disable sign-ups.** **Authentication → Providers → Email** → turn **Enable sign-ups** OFF. The only two people who can ever sign in are the ones you invite in the next step.
 3. **Invite the two users.** **Authentication → Users** → **Invite user** → enter `maximehaegeman@gmail.com` and then `karoline.j.geiker@gmail.com`. Each person clicks the email link to set up their account. The schema's trigger fills in their profile (display name + avatar) automatically when the `auth.users` row is created.
 4. **Set Site URL.** **Authentication → URL Configuration** → Site URL = `https://mhaegeman.github.io/kokken-alrum/`. Also add it to **Additional redirect URLs** so magic links work.
@@ -82,6 +82,7 @@ Do this once in the Supabase dashboard for the project:
             ├── TimelineView.tsx
             ├── BudgetView.tsx
             └── NotesView.tsx    # (placeholder until milestone 5)
+        ├── TaskDrawer.tsx        # Slide-from-right detail view for a task
 ```
 
 ## Editing seed data
