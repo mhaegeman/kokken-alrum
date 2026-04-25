@@ -77,6 +77,7 @@ function DrawerBody({
 }) {
   const state = useStore((s) => s.state);
   const updateTask = useStore((s) => s.updateTask);
+  const deleteTask = useStore((s) => s.deleteTask);
   const addTaskComment = useStore((s) => s.addTaskComment);
   const deleteTaskComment = useStore((s) => s.deleteTaskComment);
   const uploadTaskAttachment = useStore((s) => s.uploadTaskAttachment);
@@ -170,6 +171,22 @@ function DrawerBody({
         <span className="drawer-crumb">
           Phase {task.phase} · {state.phases[task.phase]?.name ?? '—'}
         </span>
+        <button
+          className="icon-btn danger drawer-delete"
+          onClick={() => {
+            if (
+              confirm(
+                `Delete task "${task.title}"?\nThis will also remove its comments and attachments. This cannot be undone.`,
+              )
+            ) {
+              deleteTask(task.id);
+              onClose();
+            }
+          }}
+          title="Delete task"
+        >
+          Delete
+        </button>
       </div>
 
       <div className="drawer-scroll">

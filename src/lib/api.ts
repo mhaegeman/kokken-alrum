@@ -245,6 +245,49 @@ function noteMessageFromDb(m: DbNoteMessage): NoteMessage {
 
 // ─── task mutations ───────────────────────────────────────────
 
+export async function addTaskRemote(input: {
+  title: string;
+  phase: number;
+  priority: TaskPriority;
+  duration: number;
+  status?: TaskStatus;
+  deps?: number[];
+}): Promise<Task> {
+  const { data, error } = await supabase
+    .from('tasks')
+    .insert({
+      title: input.title,
+      phase_id: input.phase,
+      priority: input.priority,
+      duration: input.duration,
+      status: input.status ?? 'not_started',
+      deps: input.deps ?? [],
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  const t = data as DbTask;
+  return {
+    id: t.id,
+    phase: t.phase_id,
+    title: t.title,
+    description: t.description ?? '',
+    priority: t.priority,
+    status: t.status,
+    duration: t.duration,
+    deps: t.deps ?? [],
+    start: t.start_date ?? '',
+    end: t.end_date ?? '',
+    comments: [],
+    attachments: [],
+  };
+}
+
+export async function deleteTaskRemote(id: number) {
+  const { error } = await supabase.from('tasks').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function updateTaskRemote(id: number, patch: Partial<Task>) {
   const dbPatch: Record<string, unknown> = {};
   if (patch.title !== undefined) dbPatch.title = patch.title;

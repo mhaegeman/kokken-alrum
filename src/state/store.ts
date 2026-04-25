@@ -7,11 +7,13 @@ import {
   addBudgetItemRemote,
   addLinkAttachment,
   addNoteMessageRemote,
+  addTaskRemote,
   createTopicRemote,
   deleteAttachmentRemote,
   deleteBudgetItemRemote,
   deleteCommentRemote,
   deleteNoteMessageRemote,
+  deleteTaskRemote,
   deleteTopicRemote,
   markMentionsSeenRemote,
   subscribeToChanges,
@@ -21,6 +23,7 @@ import {
   updateTopicRemote,
   uploadFileAttachment,
 } from '../lib/api';
+import { toast } from '../lib/toast';
 
 const EMPTY_STATE: AppState = {
   startDate: '',
@@ -46,6 +49,13 @@ interface Store {
   startRealtime: () => () => void;
 
   updateTask: (id: number, patch: Partial<Task>) => Promise<void>;
+  addTask: (input: {
+    title: string;
+    phase: number;
+    priority: 'high' | 'medium' | 'low';
+    duration: number;
+  }) => Promise<number | null>;
+  deleteTask: (id: number) => Promise<void>;
   addTaskComment: (taskId: number, text: string, authorId: string) => Promise<void>;
   deleteTaskComment: (taskId: number, commentId: number) => Promise<void>;
 
@@ -81,7 +91,7 @@ async function withOptimistic(
     await remote();
   } catch (e) {
     console.error(e);
-    alert('Save failed: ' + (e as Error).message);
+    toast.error('Save failed: ' + (e as Error).message);
     await reload();
   }
 }
@@ -133,6 +143,35 @@ export const useStore = create<Store>()((set, get) => ({
     );
   },
 
+  async addTask(input) {
+    try {
+      const task = await addTaskRemote(input);
+      const prev = get().state;
+      set({
+        state: { ...prev, tasks: [...prev.tasks, task] },
+      });
+      return task.id;
+    } catch (e) {
+      toast.error('Could not create task: ' + (e as Error).message);
+      return null;
+    }
+  },
+
+  async deleteTask(id) {
+    const prev = get().state;
+    await withOptimistic(
+      () =>
+        set({
+          state: {
+            ...prev,
+            tasks: prev.tasks.filter((t) => t.id !== id),
+          },
+        }),
+      () => deleteTaskRemote(id),
+      () => get().loadFromServer(),
+    );
+  },
+
   async addTaskComment(taskId, text, authorId) {
     if (!text.trim()) return;
     try {
@@ -147,7 +186,7 @@ export const useStore = create<Store>()((set, get) => ({
         },
       });
     } catch (e) {
-      alert('Could not add comment: ' + (e as Error).message);
+      toast.error('Could not add comment: ' + (e as Error).message);
     }
   },
 
@@ -187,7 +226,7 @@ export const useStore = create<Store>()((set, get) => ({
         },
       });
     } catch (e) {
-      alert('Upload failed: ' + (e as Error).message);
+      toast.error('Upload failed: ' + (e as Error).message);
     }
   },
 
@@ -206,7 +245,7 @@ export const useStore = create<Store>()((set, get) => ({
         },
       });
     } catch (e) {
-      alert('Could not add link: ' + (e as Error).message);
+      toast.error('Could not add link: ' + (e as Error).message);
     }
   },
 
@@ -259,7 +298,7 @@ export const useStore = create<Store>()((set, get) => ({
         state: { ...prev, budgetItems: [...prev.budgetItems, row] },
       });
     } catch (e) {
-      alert('Could not add item: ' + (e as Error).message);
+      toast.error('Could not add item: ' + (e as Error).message);
     }
   },
 
@@ -311,7 +350,7 @@ export const useStore = create<Store>()((set, get) => ({
       });
       return topic.id;
     } catch (e) {
-      alert('Could not create topic: ' + (e as Error).message);
+      toast.error('Could not create topic: ' + (e as Error).message);
       return null;
     }
   },
@@ -367,7 +406,7 @@ export const useStore = create<Store>()((set, get) => ({
         },
       });
     } catch (e) {
-      alert('Could not send: ' + (e as Error).message);
+      toast.error('Could not send: ' + (e as Error).message);
     }
   },
 
