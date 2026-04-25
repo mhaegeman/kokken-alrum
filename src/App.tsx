@@ -43,12 +43,7 @@ export function App() {
     return <LoginScreen />;
   }
 
-  return (
-    <Authenticated
-      profile={profile}
-      profiles={profiles}
-    />
-  );
+  return <Authenticated profile={profile} profiles={profiles} />;
 }
 
 function Authenticated({
@@ -60,6 +55,7 @@ function Authenticated({
 }) {
   const [view, setView] = useState<ViewId>('home');
   const [openTaskId, setOpenTaskId] = useState<number | null>(null);
+  const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null);
 
   const loadFromServer = useStore((s) => s.loadFromServer);
   const startRealtime = useStore((s) => s.startRealtime);
@@ -80,12 +76,22 @@ function Authenticated({
 
   const onOpenTask = (id: number) => setOpenTaskId(id);
   const onCloseTask = () => setOpenTaskId(null);
+  const onOpenTopic = (id: number) => {
+    setView('notes');
+    setSelectedTopicId(id);
+  };
 
   const innerHeader = view !== 'home' ? HEADERS[view] : null;
 
   return (
     <>
-      <TopBar onHome={setView} profile={profile} />
+      <TopBar
+        onHome={setView}
+        profile={profile}
+        profilesById={profilesById}
+        onOpenTask={onOpenTask}
+        onOpenTopic={onOpenTopic}
+      />
       <Nav current={view} onChange={setView} />
       <main className="container">
         {status === 'loading' && (
@@ -122,6 +128,8 @@ function Authenticated({
                     <NotesView
                       currentUserId={profile?.id ?? null}
                       profilesById={profilesById}
+                      selectedTopicId={selectedTopicId}
+                      onSelectTopic={setSelectedTopicId}
                     />
                   )}
                 </section>

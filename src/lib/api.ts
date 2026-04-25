@@ -5,6 +5,8 @@ import type {
   AttachmentKind,
   BudgetItem,
   Comment,
+  Mention,
+  MentionSourceKind,
   NoteMessage,
   Task,
   TaskPriority,
@@ -92,6 +94,18 @@ interface DbNoteMessage {
   created_at: string;
 }
 
+interface DbMention {
+  id: number;
+  source_kind: MentionSourceKind;
+  source_id: number;
+  task_id: number | null;
+  topic_id: number | null;
+  mentioned_user_id: string;
+  created_by: string | null;
+  created_at: string;
+  seen_at: string | null;
+}
+
 // ─── load ─────────────────────────────────────────────────────
 
 export async function loadAppState(): Promise<AppState> {
@@ -105,6 +119,7 @@ export async function loadAppState(): Promise<AppState> {
     attachmentsRes,
     topicsRes,
     messagesRes,
+    mentionsRes,
   ] = await Promise.all([
     supabase.from('project_settings').select('*').eq('id', 1).single(),
     supabase.from('phases').select('*').order('sort_order'),
@@ -115,6 +130,7 @@ export async function loadAppState(): Promise<AppState> {
     supabase.from('attachments').select('*').order('created_at'),
     supabase.from('notes_topics').select('*').order('updated_at', { ascending: false }),
     supabase.from('note_messages').select('*').order('created_at'),
+    supabase.from('mentions').select('*').order('created_at', { ascending: false }),
   ]);
 
   for (const r of [
@@ -127,6 +143,7 @@ export async function loadAppState(): Promise<AppState> {
     attachmentsRes,
     topicsRes,
     messagesRes,
+    mentionsRes,
   ]) {
     if (r.error) throw r.error;
   }
@@ -140,6 +157,7 @@ export async function loadAppState(): Promise<AppState> {
   const attachments = (attachmentsRes.data ?? []) as DbAttachment[];
   const topics = (topicsRes.data ?? []) as DbTopic[];
   const messages = (messagesRes.data ?? []) as DbNoteMessage[];
+  const mentions = (mentionsRes.data ?? []) as DbMention[];
 
   const commentsByTask = new Map<number, Comment[]>();
   for (const c of comments) {
@@ -186,6 +204,21 @@ export async function loadAppState(): Promise<AppState> {
     })),
     topics: topics.map(topicFromDb),
     messages: messages.map(noteMessageFromDb),
+    mentions: mentions.map(mentionFromDb),
+  };
+}
+
+function mentionFromDb(m: DbMention): Mention {
+  return {
+    id: m.id,
+    sourceKind: m.source_kind,
+    sourceId: m.source_id,
+    taskId: m.task_id,
+    topicId: m.topic_id,
+    mentionedUserId: m.mentioned_user_id,
+    createdBy: m.created_by,
+    createdAt: m.created_at,
+    seenAt: m.seen_at,
   };
 }
 
@@ -490,6 +523,17 @@ export async function deleteNoteMessageRemote(id: number) {
   if (error) throw error;
 }
 
+// ─── mentions ─────────────────────────────────────────────────
+
+export async function markMentionsSeenRemote(ids: number[]): Promise<void> {
+  if (ids.length === 0) return;
+  const { error } = await supabase
+    .from('mentions')
+    .update({ seen_at: new Date().toISOString() })
+    .in('id', ids);
+  if (error) throw error;
+}
+
 // ─── realtime subscriptions ───────────────────────────────────
 
 export function subscribeToChanges(onChange: () => void) {
@@ -520,6 +564,11 @@ export function subscribeToChanges(onChange: () => void) {
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'note_messages' },
+      onChange,
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'mentions' },
       onChange,
     )
     .subscribe();

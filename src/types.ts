@@ -61,6 +61,21 @@ export interface AppState {
   totalBudgetTarget: number;
   topics: Topic[];
   messages: NoteMessage[];
+  mentions: Mention[];
+}
+
+export type MentionSourceKind = 'comment' | 'note_message';
+
+export interface Mention {
+  id: number;
+  sourceKind: MentionSourceKind;
+  sourceId: number;
+  taskId: number | null;
+  topicId: number | null;
+  mentionedUserId: string;
+  createdBy: string | null;
+  createdAt: string;
+  seenAt: string | null;
 }
 
 export interface Topic {

@@ -13,6 +13,7 @@ import {
   deleteCommentRemote,
   deleteNoteMessageRemote,
   deleteTopicRemote,
+  markMentionsSeenRemote,
   subscribeToChanges,
   updateBudgetItemRemote,
   updateSettingsRemote,
@@ -31,6 +32,7 @@ const EMPTY_STATE: AppState = {
   budgetItems: [],
   topics: [],
   messages: [],
+  mentions: [],
 };
 
 export type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -63,6 +65,8 @@ interface Store {
   deleteTopic: (id: number) => Promise<void>;
   addNoteMessage: (topicId: number, body: string, authorId: string) => Promise<void>;
   deleteNoteMessage: (id: number) => Promise<void>;
+
+  markMentionsSeen: (ids: number[]) => Promise<void>;
 }
 
 // Small helper: applies an optimistic patch, runs the remote mutation, and if
@@ -378,6 +382,28 @@ export const useStore = create<Store>()((set, get) => ({
           },
         }),
       () => deleteNoteMessageRemote(id),
+      () => get().loadFromServer(),
+    );
+  },
+
+  // ─── mentions ──────────────────────────────────────────
+
+  async markMentionsSeen(ids) {
+    if (ids.length === 0) return;
+    const prev = get().state;
+    const now = new Date().toISOString();
+    const idSet = new Set(ids);
+    await withOptimistic(
+      () =>
+        set({
+          state: {
+            ...prev,
+            mentions: prev.mentions.map((m) =>
+              idSet.has(m.id) && !m.seenAt ? { ...m, seenAt: now } : m,
+            ),
+          },
+        }),
+      () => markMentionsSeenRemote(ids),
       () => get().loadFromServer(),
     );
   },
