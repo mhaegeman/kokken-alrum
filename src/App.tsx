@@ -118,7 +118,12 @@ function Authenticated({
                   {view === 'tasks' && <TasksView onOpenTask={onOpenTask} />}
                   {view === 'timeline' && <TimelineView />}
                   {view === 'budget' && <BudgetView />}
-                  {view === 'notes' && <NotesView />}
+                  {view === 'notes' && (
+                    <NotesView
+                      currentUserId={profile?.id ?? null}
+                      profilesById={profilesById}
+                    />
+                  )}
                 </section>
               </>
             )}

@@ -5,6 +5,11 @@ import { diffDays, fmtMoney, formatDateShort } from '../../lib/format';
 import { ProgressRing } from '../ProgressRing';
 import type { ViewId } from '../../types';
 
+function truncate(text: string, n: number): string {
+  if (text.length <= n) return text;
+  return text.slice(0, n - 1).trimEnd() + '…';
+}
+
 export function HomeView({
   onNavigate,
   onOpenTask,
@@ -44,15 +49,34 @@ export function HomeView({
     : 0;
 
   const activity = useMemo(() => {
-    const items: { date: string; text: string; taskTitle: string }[] = [];
+    const items: {
+      sortKey: string;
+      date: string;
+      text: string;
+      where: string;
+    }[] = [];
     state.tasks.forEach((t) => {
       t.comments.forEach((c) => {
-        items.push({ date: c.date, text: c.text, taskTitle: t.title });
+        items.push({
+          sortKey: c.date,
+          date: c.date,
+          text: c.text,
+          where: t.title,
+        });
       });
     });
-    items.sort((a, b) => b.date.localeCompare(a.date));
+    state.messages.forEach((m) => {
+      const topic = state.topics.find((t) => t.id === m.topicId);
+      items.push({
+        sortKey: m.createdAt,
+        date: m.createdAt.slice(0, 10),
+        text: m.body,
+        where: topic ? `Notes · ${topic.title}` : 'Notes',
+      });
+    });
+    items.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
     return items.slice(0, 5);
-  }, [state.tasks]);
+  }, [state.tasks, state.messages, state.topics]);
 
   return (
     <>
@@ -177,9 +201,9 @@ export function HomeView({
             )}
             {activity.map((a, i) => (
               <div key={i} className="activity-item">
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <p className="activity-text">
-                    On <b>{a.taskTitle}</b> — {a.text}
+                    On <b>{a.where}</b> — {truncate(a.text, 140)}
                   </p>
                   <p className="activity-meta tnum">{a.date}</p>
                 </div>

@@ -6,13 +6,18 @@ import {
   addCommentRemote,
   addBudgetItemRemote,
   addLinkAttachment,
+  addNoteMessageRemote,
+  createTopicRemote,
   deleteAttachmentRemote,
   deleteBudgetItemRemote,
   deleteCommentRemote,
+  deleteNoteMessageRemote,
+  deleteTopicRemote,
   subscribeToChanges,
   updateBudgetItemRemote,
   updateSettingsRemote,
   updateTaskRemote,
+  updateTopicRemote,
   uploadFileAttachment,
 } from '../lib/api';
 
@@ -24,6 +29,8 @@ const EMPTY_STATE: AppState = {
   budgetCategories: {},
   tasks: [],
   budgetItems: [],
+  topics: [],
+  messages: [],
 };
 
 export type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -50,6 +57,12 @@ interface Store {
 
   setBudgetTarget: (target: number) => Promise<void>;
   setStartDate: (date: string) => Promise<void>;
+
+  createTopic: (title: string, createdBy: string) => Promise<number | null>;
+  renameTopic: (id: number, title: string) => Promise<void>;
+  deleteTopic: (id: number) => Promise<void>;
+  addNoteMessage: (topicId: number, body: string, authorId: string) => Promise<void>;
+  deleteNoteMessage: (id: number) => Promise<void>;
 }
 
 // Small helper: applies an optimistic patch, runs the remote mutation, and if
@@ -277,6 +290,94 @@ export const useStore = create<Store>()((set, get) => ({
     await withOptimistic(
       () => set({ state: { ...prev, startDate: date } }),
       () => updateSettingsRemote({ startDate: date }),
+      () => get().loadFromServer(),
+    );
+  },
+
+  // ─── notes ──────────────────────────────────────────────
+
+  async createTopic(title, createdBy) {
+    const trimmed = title.trim();
+    if (!trimmed) return null;
+    try {
+      const topic = await createTopicRemote(trimmed, createdBy);
+      const prev = get().state;
+      set({
+        state: { ...prev, topics: [topic, ...prev.topics] },
+      });
+      return topic.id;
+    } catch (e) {
+      alert('Could not create topic: ' + (e as Error).message);
+      return null;
+    }
+  },
+
+  async renameTopic(id, title) {
+    const prev = get().state;
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    await withOptimistic(
+      () =>
+        set({
+          state: {
+            ...prev,
+            topics: prev.topics.map((t) =>
+              t.id === id ? { ...t, title: trimmed } : t,
+            ),
+          },
+        }),
+      () => updateTopicRemote(id, { title: trimmed }),
+      () => get().loadFromServer(),
+    );
+  },
+
+  async deleteTopic(id) {
+    const prev = get().state;
+    await withOptimistic(
+      () =>
+        set({
+          state: {
+            ...prev,
+            topics: prev.topics.filter((t) => t.id !== id),
+            messages: prev.messages.filter((m) => m.topicId !== id),
+          },
+        }),
+      () => deleteTopicRemote(id),
+      () => get().loadFromServer(),
+    );
+  },
+
+  async addNoteMessage(topicId, body, authorId) {
+    const trimmed = body.trim();
+    if (!trimmed) return;
+    try {
+      const message = await addNoteMessageRemote(topicId, trimmed, authorId);
+      const prev = get().state;
+      set({
+        state: {
+          ...prev,
+          messages: [...prev.messages, message],
+          topics: prev.topics.map((t) =>
+            t.id === topicId ? { ...t, updatedAt: message.createdAt } : t,
+          ),
+        },
+      });
+    } catch (e) {
+      alert('Could not send: ' + (e as Error).message);
+    }
+  },
+
+  async deleteNoteMessage(id) {
+    const prev = get().state;
+    await withOptimistic(
+      () =>
+        set({
+          state: {
+            ...prev,
+            messages: prev.messages.filter((m) => m.id !== id),
+          },
+        }),
+      () => deleteNoteMessageRemote(id),
       () => get().loadFromServer(),
     );
   },
