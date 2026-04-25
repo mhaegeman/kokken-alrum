@@ -6,6 +6,7 @@ import type {
   AttachmentTarget,
   BudgetItem,
   Comment,
+  Contact,
   Mention,
   MentionSourceKind,
   NoteMessage,
@@ -97,6 +98,19 @@ interface DbNoteMessage {
   created_at: string;
 }
 
+interface DbContact {
+  id: number;
+  name: string;
+  role: string;
+  phone: string;
+  email: string;
+  address: string;
+  notes: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface DbMention {
   id: number;
   source_kind: MentionSourceKind;
@@ -123,6 +137,7 @@ export async function loadAppState(): Promise<AppState> {
     topicsRes,
     messagesRes,
     mentionsRes,
+    contactsRes,
   ] = await Promise.all([
     supabase.from('project_settings').select('*').eq('id', 1).single(),
     supabase.from('phases').select('*').order('sort_order'),
@@ -134,6 +149,7 @@ export async function loadAppState(): Promise<AppState> {
     supabase.from('notes_topics').select('*').order('updated_at', { ascending: false }),
     supabase.from('note_messages').select('*').order('created_at'),
     supabase.from('mentions').select('*').order('created_at', { ascending: false }),
+    supabase.from('contacts').select('*').order('name'),
   ]);
 
   for (const r of [
@@ -147,6 +163,7 @@ export async function loadAppState(): Promise<AppState> {
     topicsRes,
     messagesRes,
     mentionsRes,
+    contactsRes,
   ]) {
     if (r.error) throw r.error;
   }
@@ -161,6 +178,7 @@ export async function loadAppState(): Promise<AppState> {
   const topics = (topicsRes.data ?? []) as DbTopic[];
   const messages = (messagesRes.data ?? []) as DbNoteMessage[];
   const mentions = (mentionsRes.data ?? []) as DbMention[];
+  const contacts = (contactsRes.data ?? []) as DbContact[];
 
   const commentsByTask = new Map<number, Comment[]>();
   for (const c of comments) {
@@ -225,6 +243,7 @@ export async function loadAppState(): Promise<AppState> {
       attachments: attachmentsByNoteMessage.get(m.id) ?? [],
     })),
     mentions: mentions.map(mentionFromDb),
+    contacts: contacts.map(contactFromDb),
   };
 }
 
@@ -688,6 +707,62 @@ export async function revokeInviteRemote(id: number): Promise<void> {
   if (error) throw error;
 }
 
+// ─── contacts ─────────────────────────────────────────────────
+
+function contactFromDb(c: DbContact): Contact {
+  return {
+    id: c.id,
+    name: c.name,
+    role: c.role ?? '',
+    phone: c.phone ?? '',
+    email: c.email ?? '',
+    address: c.address ?? '',
+    notes: c.notes ?? '',
+    createdBy: c.created_by,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at,
+  };
+}
+
+export async function addContactRemote(
+  input: Omit<Contact, 'id' | 'createdBy' | 'createdAt' | 'updatedAt'>,
+  createdBy: string,
+): Promise<Contact> {
+  const { data, error } = await supabase
+    .from('contacts')
+    .insert({
+      name: input.name,
+      role: input.role,
+      phone: input.phone,
+      email: input.email,
+      address: input.address,
+      notes: input.notes,
+      created_by: createdBy,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return contactFromDb(data as DbContact);
+}
+
+export async function updateContactRemote(id: number, patch: Partial<Contact>) {
+  const dbPatch: Record<string, unknown> = {};
+  if (patch.name !== undefined) dbPatch.name = patch.name;
+  if (patch.role !== undefined) dbPatch.role = patch.role;
+  if (patch.phone !== undefined) dbPatch.phone = patch.phone;
+  if (patch.email !== undefined) dbPatch.email = patch.email;
+  if (patch.address !== undefined) dbPatch.address = patch.address;
+  if (patch.notes !== undefined) dbPatch.notes = patch.notes;
+
+  const { error } = await supabase.from('contacts').update(dbPatch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteContactRemote(id: number) {
+  const { error } = await supabase.from('contacts').delete().eq('id', id);
+  if (error) throw error;
+}
+
 // ─── mentions ─────────────────────────────────────────────────
 
 export async function markMentionsSeenRemote(ids: number[]): Promise<void> {
@@ -734,6 +809,11 @@ export function subscribeToChanges(onChange: () => void) {
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'mentions' },
+      onChange,
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'contacts' },
       onChange,
     )
     .subscribe();

@@ -10,6 +10,7 @@ import { TasksView } from './components/views/TasksView';
 import { TimelineView } from './components/views/TimelineView';
 import { BudgetView } from './components/views/BudgetView';
 import { NotesView } from './components/views/NotesView';
+import { ContactsView } from './components/views/ContactsView';
 import { TaskDrawer } from './components/TaskDrawer';
 import { Toaster } from './components/Toaster';
 import { HomeSkeleton } from './components/Skeleton';
@@ -32,6 +33,10 @@ const HEADERS: Record<Exclude<ViewId, 'home'>, { title: string; sub: string }> =
   notes: {
     title: 'Notes',
     sub: 'Open threads on specific topics.',
+  },
+  contacts: {
+    title: 'Contacts',
+    sub: 'People and companies we work with on the project.',
   },
 };
 
@@ -99,6 +104,7 @@ function Authenticated({
   const [view, setView] = useState<ViewId>('home');
   const [openTaskId, setOpenTaskId] = useState<number | null>(null);
   const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null);
+  const [selectedContactId, setSelectedContactId] = useState<number | null>(null);
 
   const loadFromServer = useStore((s) => s.loadFromServer);
   const startRealtime = useStore((s) => s.startRealtime);
@@ -123,6 +129,31 @@ function Authenticated({
     setView('notes');
     setSelectedTopicId(id);
   };
+  const onOpenContact = (id: number) => {
+    setView('contacts');
+    setSelectedContactId(id);
+    setOpenTaskId(null);
+  };
+
+  // Delegate clicks on .mention-contact spans (rendered inside comments,
+  // notes, etc.) so they navigate to the Contacts tab with that contact
+  // pre-selected. Avoids each render site needing its own listener.
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      const target = (e.target as HTMLElement | null)?.closest(
+        '.mention-contact',
+      );
+      if (!target) return;
+      const idStr = target.getAttribute('data-contact-id');
+      if (!idStr) return;
+      const id = Number(idStr);
+      if (!Number.isFinite(id)) return;
+      e.preventDefault();
+      onOpenContact(id);
+    }
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, []);
 
   const innerHeader = view !== 'home' ? HEADERS[view] : null;
 
@@ -163,7 +194,7 @@ function Authenticated({
                     <p>{innerHeader.sub}</p>
                   </div>
                 )}
-                {view !== 'notes' && <Stats />}
+                {view !== 'notes' && view !== 'contacts' && <Stats />}
                 <section>
                   {view === 'tasks' && (
                     <TasksView onOpenTask={onOpenTask} isGuest={isGuest} />
@@ -184,6 +215,14 @@ function Authenticated({
                       profilesById={profilesById}
                       selectedTopicId={selectedTopicId}
                       onSelectTopic={setSelectedTopicId}
+                      isGuest={isGuest}
+                    />
+                  )}
+                  {view === 'contacts' && (
+                    <ContactsView
+                      currentUserId={profile?.id ?? null}
+                      selectedContactId={selectedContactId}
+                      onSelectContact={setSelectedContactId}
                       isGuest={isGuest}
                     />
                   )}

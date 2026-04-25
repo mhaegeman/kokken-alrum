@@ -4,7 +4,7 @@ import type { Profile } from '../../lib/auth';
 import type { NoteMessage, Topic } from '../../types';
 import { Avatar } from '../Avatar';
 import { MessageAttachments } from '../MessageAttachments';
-import { renderMarkdown } from '../../lib/markdown';
+import { renderMarkdown, type MentionContact } from '../../lib/markdown';
 
 interface Props {
   currentUserId: string | null;
@@ -35,6 +35,10 @@ export function NotesView({
   const mentionNames = useMemo(
     () => Object.values(profilesById).map((p) => p.display_name),
     [profilesById],
+  );
+  const mentionContacts = useMemo(
+    () => state.contacts.map((c) => ({ id: c.id, name: c.name })),
+    [state.contacts],
   );
 
   // Auto-select the first topic once data loads / topics change.
@@ -106,6 +110,7 @@ export function NotesView({
             currentUserId={currentUserId}
             profilesById={profilesById}
             mentionNames={mentionNames}
+            mentionContacts={mentionContacts}
             isGuest={isGuest}
             onSend={(body, files) =>
               currentUserId &&
@@ -246,6 +251,7 @@ function TopicThread({
   currentUserId,
   profilesById,
   mentionNames,
+  mentionContacts,
   isGuest,
   onSend,
   onDeleteMessage,
@@ -258,6 +264,7 @@ function TopicThread({
   currentUserId: string | null;
   profilesById: Record<string, Profile>;
   mentionNames: string[];
+  mentionContacts: MentionContact[];
   isGuest: boolean;
   onSend: (body: string, files: File[]) => void;
   onDeleteMessage: (id: number) => void;
@@ -445,7 +452,7 @@ function TopicThread({
                   <div
                     className="note-message-body"
                     dangerouslySetInnerHTML={{
-                      __html: renderMarkdown(m.body, { mentionNames }),
+                      __html: renderMarkdown(m.body, { mentionNames, mentionContacts }),
                     }}
                   />
                 )}

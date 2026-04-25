@@ -2556,6 +2556,299 @@ select:focus, input:focus {
   .notes-back-btn { display: inline-flex; }
 }
 
+/* ── contacts ───────────────────────────────────────────── */
+.contacts-wrap {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 24px;
+  align-items: stretch;
+  min-height: 60vh;
+}
+
+.contacts-sidebar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.contacts-sidebar-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 4px 10px;
+}
+
+.contacts-sidebar-head h4 {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.contacts-new-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.contacts-search {
+  width: 100%;
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.contacts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.contacts-list-empty {
+  color: var(--text-3);
+  font-size: 13px;
+  padding: 12px 4px;
+  margin: 0;
+}
+
+.contact-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--text);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.contact-row:hover {
+  background: var(--linen);
+}
+
+.contact-row.active {
+  background: var(--forest-soft);
+  border-color: var(--forest-soft);
+}
+
+.contact-row-name {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.contact-row-role {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.contact-row-meta {
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contacts-main {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 60vh;
+}
+
+.contacts-empty {
+  margin: auto;
+  text-align: center;
+  padding: 40px 24px;
+  color: var(--text-2);
+  max-width: 440px;
+}
+
+.contacts-empty h3 {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.contacts-empty-hint {
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.contact-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 60vh;
+}
+
+.contact-detail-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.contacts-back-btn {
+  display: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.contact-detail-title-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.contact-detail-title {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  letter-spacing: -0.01em;
+  margin: 0;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.contact-detail-sub {
+  font-size: 13px;
+  color: var(--text-2);
+  margin: 0;
+}
+
+.contact-inline-input {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  margin-left: -7px;
+}
+
+.contact-inline-input:hover {
+  border-color: var(--border);
+}
+
+.contact-inline-input:focus {
+  border-color: var(--forest);
+  background: var(--surface);
+  outline: none;
+}
+
+.contact-detail-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.contact-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.contact-field-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.contact-field input,
+.contact-field textarea {
+  width: 100%;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.contact-field textarea {
+  resize: vertical;
+  min-height: 64px;
+}
+
+.contact-field-readonly p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.contact-field-readonly-multi {
+  white-space: pre-wrap;
+}
+
+.contact-field-readonly a {
+  color: var(--forest);
+}
+
+.contact-mention-hint {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.contact-form-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+/* contact mention pill — slightly different so people can tell at a glance
+   that it's not a project member but a contact in the address book. */
+.mention-contact {
+  background: var(--rose-soft);
+  color: var(--terra, var(--text));
+  cursor: pointer;
+}
+
+.mention-contact:hover {
+  filter: brightness(0.97);
+}
+
+@media (max-width: 720px) {
+  .contacts-wrap {
+    grid-template-columns: 1fr;
+  }
+  .contacts-wrap.has-detail .contacts-sidebar { display: none; }
+  .contacts-wrap:not(.has-detail) .contacts-main { display: none; }
+  .contacts-back-btn { display: inline-flex; }
+}
+
 /* ─── guest mode + invites ─────────────────────────────────── */
 
 .guest-tag {
