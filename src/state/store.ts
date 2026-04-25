@@ -25,6 +25,28 @@ import {
 } from '../lib/api';
 import { toast } from '../lib/toast';
 
+// Last-known-good cache of the AppState in localStorage so the UI can
+// paint from cache on cold start (and works read-only when offline).
+const CACHE_KEY = 'kokken_alrum_state_cache_v2';
+
+function loadCachedState(): AppState | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as AppState;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedState(s: AppState) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(s));
+  } catch {
+    // QuotaExceeded etc. — fine to ignore, cache is optional.
+  }
+}
+
 const EMPTY_STATE: AppState = {
   startDate: '',
   currency: 'DKK',
@@ -63,6 +85,10 @@ interface Store {
   addTaskLink: (taskId: number, url: string, label: string, uploaderId: string) => Promise<void>;
   deleteTaskAttachment: (taskId: number, attachment: Attachment) => Promise<void>;
 
+  uploadBudgetAttachment: (budgetItemId: number, file: File, uploaderId: string) => Promise<void>;
+  addBudgetLink: (budgetItemId: number, url: string, label: string, uploaderId: string) => Promise<void>;
+  deleteBudgetAttachment: (budgetItemId: number, attachment: Attachment) => Promise<void>;
+
   updateBudgetItem: (id: number, patch: Partial<BudgetItem>) => Promise<void>;
   addBudgetItem: (item: Omit<BudgetItem, 'id'>) => Promise<void>;
   deleteBudgetItem: (id: number) => Promise<void>;
@@ -96,19 +122,31 @@ async function withOptimistic(
   }
 }
 
+// Pre-populate from localStorage so the first paint shows the last
+// known data instead of empty placeholders. The actual loadFromServer
+// will overwrite this once Supabase responds.
+const cached = loadCachedState();
+
 export const useStore = create<Store>()((set, get) => ({
-  state: EMPTY_STATE,
-  status: 'idle',
+  state: cached ?? EMPTY_STATE,
+  status: cached ? 'ready' : 'idle',
   error: null,
 
   async loadFromServer() {
-    set({ status: 'loading', error: null });
+    const haveCache = get().status === 'ready';
+    if (!haveCache) set({ status: 'loading', error: null });
     try {
       const next = await loadAppState();
-      set({ state: next, status: 'ready' });
+      set({ state: next, status: 'ready', error: null });
+      saveCachedState(next);
     } catch (e) {
       console.error(e);
-      set({ status: 'error', error: (e as Error).message });
+      if (haveCache) {
+        // Network blip — keep showing cached data + a quiet toast.
+        toast.error("Couldn't refresh — showing last-known data.");
+      } else {
+        set({ status: 'error', error: (e as Error).message });
+      }
     }
   },
 
@@ -213,7 +251,7 @@ export const useStore = create<Store>()((set, get) => ({
 
   async uploadTaskAttachment(taskId, file, uploaderId) {
     try {
-      const attachment = await uploadFileAttachment(taskId, file, uploaderId);
+      const attachment = await uploadFileAttachment({ taskId }, file, uploaderId);
       const prev = get().state;
       set({
         state: {
@@ -232,7 +270,7 @@ export const useStore = create<Store>()((set, get) => ({
 
   async addTaskLink(taskId, url, label, uploaderId) {
     try {
-      const attachment = await addLinkAttachment(taskId, url, label, uploaderId);
+      const attachment = await addLinkAttachment({ taskId }, url, label, uploaderId);
       const prev = get().state;
       set({
         state: {
@@ -263,6 +301,68 @@ export const useStore = create<Store>()((set, get) => ({
                     attachments: t.attachments.filter((a) => a.id !== attachment.id),
                   }
                 : t,
+            ),
+          },
+        }),
+      () => deleteAttachmentRemote(attachment),
+      () => get().loadFromServer(),
+    );
+  },
+
+  // ─── budget attachments ─────────────────────────────────
+
+  async uploadBudgetAttachment(budgetItemId, file, uploaderId) {
+    try {
+      const attachment = await uploadFileAttachment({ budgetItemId }, file, uploaderId);
+      const prev = get().state;
+      set({
+        state: {
+          ...prev,
+          budgetItems: prev.budgetItems.map((i) =>
+            i.id === budgetItemId
+              ? { ...i, attachments: [...i.attachments, attachment] }
+              : i,
+          ),
+        },
+      });
+    } catch (e) {
+      toast.error('Upload failed: ' + (e as Error).message);
+    }
+  },
+
+  async addBudgetLink(budgetItemId, url, label, uploaderId) {
+    try {
+      const attachment = await addLinkAttachment({ budgetItemId }, url, label, uploaderId);
+      const prev = get().state;
+      set({
+        state: {
+          ...prev,
+          budgetItems: prev.budgetItems.map((i) =>
+            i.id === budgetItemId
+              ? { ...i, attachments: [...i.attachments, attachment] }
+              : i,
+          ),
+        },
+      });
+    } catch (e) {
+      toast.error('Could not add link: ' + (e as Error).message);
+    }
+  },
+
+  async deleteBudgetAttachment(budgetItemId, attachment) {
+    const prev = get().state;
+    await withOptimistic(
+      () =>
+        set({
+          state: {
+            ...prev,
+            budgetItems: prev.budgetItems.map((i) =>
+              i.id === budgetItemId
+                ? {
+                    ...i,
+                    attachments: i.attachments.filter((a) => a.id !== attachment.id),
+                  }
+                : i,
             ),
           },
         }),
