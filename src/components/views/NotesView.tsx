@@ -3,6 +3,7 @@ import { useStore } from '../../state/store';
 import type { Profile } from '../../lib/auth';
 import type { NoteMessage, Topic } from '../../types';
 import { Avatar } from '../Avatar';
+import { MessageAttachments } from '../MessageAttachments';
 import { renderMarkdown } from '../../lib/markdown';
 
 interface Props {
@@ -103,9 +104,9 @@ export function NotesView({
             currentUserId={currentUserId}
             profilesById={profilesById}
             mentionNames={mentionNames}
-            onSend={(body) =>
+            onSend={(body, files) =>
               currentUserId &&
-              addNoteMessage(selectedTopic.id, body, currentUserId)
+              addNoteMessage(selectedTopic.id, body, currentUserId, files)
             }
             onDeleteMessage={(id) => deleteNoteMessage(id)}
             onRename={(title) => renameTopic(selectedTopic.id, title)}
@@ -253,22 +254,35 @@ function TopicThread({
   currentUserId: string | null;
   profilesById: Record<string, Profile>;
   mentionNames: string[];
-  onSend: (body: string) => void;
+  onSend: (body: string, files: File[]) => void;
   onDeleteMessage: (id: number) => void;
   onRename: (title: string) => void;
   onDelete: () => void;
   onBack: () => void;
 }) {
   const [draft, setDraft] = useState('');
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [dragActive, setDragActive] = useState(false);
+  const [sending, setSending] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(topic.title);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Reset the title draft whenever the topic changes.
+  // Keep the title-edit field in sync with the source of truth so that
+  // realtime renames (or our own saves) reflect immediately.
   useEffect(() => {
     setTitleDraft(topic.title);
     setEditingTitle(false);
-  }, [topic.id, topic.title]);
+  }, [topic.title]);
+
+  // Only discard in-progress composer state when actually switching to a
+  // different topic — a rename of the open topic should not wipe a draft
+  // or queued attachments.
+  useEffect(() => {
+    setPendingFiles([]);
+    setDraft('');
+  }, [topic.id]);
 
   // Scroll to bottom on new messages or topic switch.
   useEffect(() => {
@@ -277,11 +291,50 @@ function TopicThread({
     el.scrollTop = el.scrollHeight;
   }, [messages.length, topic.id]);
 
-  const submitMessage = () => {
+  const submitMessage = async () => {
     const v = draft.trim();
-    if (!v || !currentUserId) return;
-    onSend(v);
-    setDraft('');
+    if (!currentUserId) return;
+    if (!v && pendingFiles.length === 0) return;
+    setSending(true);
+    try {
+      await Promise.resolve(onSend(v, pendingFiles));
+      setDraft('');
+      setPendingFiles([]);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const addPendingFiles = (files: FileList | File[]) => {
+    const fresh = Array.from(files).filter((f) => {
+      if (f.size > 25 * 1024 * 1024) {
+        return confirm(`${f.name} is over 25 MB — continue anyway?`);
+      }
+      return true;
+    });
+    if (fresh.length > 0) setPendingFiles((p) => [...p, ...fresh]);
+  };
+
+  const removePendingFile = (index: number) =>
+    setPendingFiles((p) => p.filter((_, i) => i !== index));
+
+  const onComposerDragOver: React.DragEventHandler<HTMLDivElement> = (e) => {
+    if (!currentUserId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!dragActive) setDragActive(true);
+  };
+
+  const onComposerDragLeave: React.DragEventHandler<HTMLDivElement> = (e) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setDragActive(false);
+  };
+
+  const onComposerDrop: React.DragEventHandler<HTMLDivElement> = (e) => {
+    e.preventDefault();
+    setDragActive(false);
+    if (!currentUserId) return;
+    if (e.dataTransfer.files?.length) addPendingFiles(e.dataTransfer.files);
   };
 
   const submitTitle = () => {
@@ -383,43 +436,104 @@ function TopicThread({
                     </button>
                   )}
                 </div>
-                <div
-                  className="note-message-body"
-                  dangerouslySetInnerHTML={{
-                    __html: renderMarkdown(m.body, { mentionNames }),
-                  }}
-                />
+                {m.body && (
+                  <div
+                    className="note-message-body"
+                    dangerouslySetInnerHTML={{
+                      __html: renderMarkdown(m.body, { mentionNames }),
+                    }}
+                  />
+                )}
+                {m.attachments && m.attachments.length > 0 && (
+                  <MessageAttachments attachments={m.attachments} />
+                )}
               </div>
             </div>
           );
         })}
       </div>
 
-      <div className="notes-composer">
-        <textarea
-          rows={2}
-          placeholder={
-            currentUserId
-              ? 'Reply… (Enter to send, Shift+Enter newline, try @max or @karo)'
-              : 'Sign in to reply'
-          }
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              submitMessage();
+      <div
+        className={`notes-composer ${dragActive ? 'drag-active' : ''}`}
+        onDragOver={onComposerDragOver}
+        onDragLeave={onComposerDragLeave}
+        onDrop={onComposerDrop}
+      >
+        <div className="composer-main">
+          {pendingFiles.length > 0 && (
+            <div className="composer-pending">
+              {pendingFiles.map((f, i) => (
+                <span className="pending-chip" key={i}>
+                  <span aria-hidden="true">
+                    {f.type.startsWith('image/') ? '🖼' : '📄'}
+                  </span>
+                  <span className="pending-chip-name">{f.name}</span>
+                  <button
+                    className="pending-chip-x"
+                    aria-label={`Remove ${f.name}`}
+                    onClick={() => removePendingFile(i)}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <textarea
+            rows={2}
+            placeholder={
+              currentUserId
+                ? 'Reply… (Enter to send, Shift+Enter newline, try @max or @karo, drag in files)'
+                : 'Sign in to reply'
             }
-          }}
-          disabled={!currentUserId}
-        />
-        <button
-          className="btn-primary"
-          onClick={submitMessage}
-          disabled={!currentUserId || !draft.trim()}
-        >
-          Send
-        </button>
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submitMessage();
+              }
+            }}
+            disabled={!currentUserId || sending}
+          />
+        </div>
+
+        <div className="composer-actions">
+          <button
+            className="icon-btn composer-attach-btn"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!currentUserId || sending}
+            aria-label="Attach files"
+            title="Attach files"
+          >
+            📎
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            hidden
+            multiple
+            onChange={(e) => {
+              if (e.target.files) addPendingFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+          <button
+            className="btn-primary"
+            onClick={submitMessage}
+            disabled={
+              !currentUserId ||
+              sending ||
+              (!draft.trim() && pendingFiles.length === 0)
+            }
+          >
+            {sending ? 'Sending…' : 'Send'}
+          </button>
+        </div>
+
+        {dragActive && (
+          <div className="composer-drop-overlay">Drop to attach</div>
+        )}
       </div>
     </div>
   );

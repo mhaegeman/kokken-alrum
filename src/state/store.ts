@@ -99,7 +99,12 @@ interface Store {
   createTopic: (title: string, createdBy: string) => Promise<number | null>;
   renameTopic: (id: number, title: string) => Promise<void>;
   deleteTopic: (id: number) => Promise<void>;
-  addNoteMessage: (topicId: number, body: string, authorId: string) => Promise<void>;
+  addNoteMessage: (
+    topicId: number,
+    body: string,
+    authorId: string,
+    files?: File[],
+  ) => Promise<void>;
   deleteNoteMessage: (id: number) => Promise<void>;
 
   markMentionsSeen: (ids: number[]) => Promise<void>;
@@ -490,16 +495,42 @@ export const useStore = create<Store>()((set, get) => ({
     );
   },
 
-  async addNoteMessage(topicId, body, authorId) {
+  async addNoteMessage(topicId, body, authorId, files) {
     const trimmed = body.trim();
-    if (!trimmed) return;
+    const pending = files ?? [];
+    if (!trimmed && pending.length === 0) return;
     try {
       const message = await addNoteMessageRemote(topicId, trimmed, authorId);
+
+      // Upload any attached files in parallel; a failure on one shouldn't
+      // lose the message we already saved.
+      const uploaded: Attachment[] = [];
+      if (pending.length > 0) {
+        const results = await Promise.allSettled(
+          pending.map((file) =>
+            uploadFileAttachment({ noteMessageId: message.id }, file, authorId),
+          ),
+        );
+        for (const r of results) {
+          if (r.status === 'fulfilled') uploaded.push(r.value);
+          else toast.error('Upload failed: ' + (r.reason as Error).message);
+        }
+      }
+
+      const fullMessage = { ...message, attachments: uploaded };
       const prev = get().state;
+      // Merge by id rather than always pushing: if uploads outlast the
+      // realtime debounce, loadFromServer may have already added the
+      // bare message to state.messages, and a naive push duplicates it.
+      const existsAt = prev.messages.findIndex((m) => m.id === fullMessage.id);
+      const nextMessages =
+        existsAt >= 0
+          ? prev.messages.map((m, i) => (i === existsAt ? fullMessage : m))
+          : [...prev.messages, fullMessage];
       set({
         state: {
           ...prev,
-          messages: [...prev.messages, message],
+          messages: nextMessages,
           topics: prev.topics.map((t) =>
             t.id === topicId ? { ...t, updatedAt: message.createdAt } : t,
           ),

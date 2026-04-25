@@ -69,6 +69,7 @@ interface DbAttachment {
   id: number;
   task_id: number | null;
   budget_item_id: number | null;
+  note_message_id: number | null;
   kind: AttachmentKind;
   storage_path: string | null;
   url: string | null;
@@ -170,6 +171,7 @@ export async function loadAppState(): Promise<AppState> {
 
   const attachmentsByTask = new Map<number, Attachment[]>();
   const attachmentsByBudgetItem = new Map<number, Attachment[]>();
+  const attachmentsByNoteMessage = new Map<number, Attachment[]>();
   for (const a of attachments) {
     const dto = attachmentFromDb(a);
     if (a.task_id != null) {
@@ -180,6 +182,10 @@ export async function loadAppState(): Promise<AppState> {
       const list = attachmentsByBudgetItem.get(a.budget_item_id) ?? [];
       list.push(dto);
       attachmentsByBudgetItem.set(a.budget_item_id, list);
+    } else if (a.note_message_id != null) {
+      const list = attachmentsByNoteMessage.get(a.note_message_id) ?? [];
+      list.push(dto);
+      attachmentsByNoteMessage.set(a.note_message_id, list);
     }
   }
 
@@ -214,7 +220,10 @@ export async function loadAppState(): Promise<AppState> {
       attachments: attachmentsByBudgetItem.get(b.id) ?? [],
     })),
     topics: topics.map(topicFromDb),
-    messages: messages.map(noteMessageFromDb),
+    messages: messages.map((m) => ({
+      ...noteMessageFromDb(m),
+      attachments: attachmentsByNoteMessage.get(m.id) ?? [],
+    })),
     mentions: mentions.map(mentionFromDb),
   };
 }
@@ -251,6 +260,7 @@ function noteMessageFromDb(m: DbNoteMessage): NoteMessage {
     authorId: m.author_id,
     body: m.body,
     createdAt: m.created_at,
+    attachments: [],
   };
 }
 
@@ -352,6 +362,7 @@ function attachmentFromDb(a: DbAttachment): Attachment {
     id: a.id,
     taskId: a.task_id,
     budgetItemId: a.budget_item_id,
+    noteMessageId: a.note_message_id,
     kind: a.kind,
     filename: a.filename,
     storagePath: a.storage_path,
@@ -366,19 +377,30 @@ function attachmentFromDb(a: DbAttachment): Attachment {
 function targetToInsert(target: AttachmentTarget): {
   task_id: number | null;
   budget_item_id: number | null;
+  note_message_id: number | null;
   pathPrefix: string;
 } {
   if ('taskId' in target) {
     return {
       task_id: target.taskId,
       budget_item_id: null,
+      note_message_id: null,
       pathPrefix: `task/${target.taskId}`,
+    };
+  }
+  if ('budgetItemId' in target) {
+    return {
+      task_id: null,
+      budget_item_id: target.budgetItemId,
+      note_message_id: null,
+      pathPrefix: `budget/${target.budgetItemId}`,
     };
   }
   return {
     task_id: null,
-    budget_item_id: target.budgetItemId,
-    pathPrefix: `budget/${target.budgetItemId}`,
+    budget_item_id: null,
+    note_message_id: target.noteMessageId,
+    pathPrefix: `note/${target.noteMessageId}`,
   };
 }
 
@@ -415,6 +437,7 @@ export async function uploadFileAttachment(
     .insert({
       task_id: t.task_id,
       budget_item_id: t.budget_item_id,
+      note_message_id: t.note_message_id,
       kind: 'file',
       storage_path: path,
       filename: file.name,
@@ -450,6 +473,7 @@ export async function addLinkAttachment(
     .insert({
       task_id: t.task_id,
       budget_item_id: t.budget_item_id,
+      note_message_id: t.note_message_id,
       kind: 'link',
       url: trimmedUrl,
       filename: trimmedLabel || trimmedUrl,
