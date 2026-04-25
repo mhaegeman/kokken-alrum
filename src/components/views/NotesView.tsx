@@ -269,13 +269,20 @@ function TopicThread({
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Reset the title draft + pending files whenever the topic changes.
+  // Keep the title-edit field in sync with the source of truth so that
+  // realtime renames (or our own saves) reflect immediately.
   useEffect(() => {
     setTitleDraft(topic.title);
     setEditingTitle(false);
+  }, [topic.title]);
+
+  // Only discard in-progress composer state when actually switching to a
+  // different topic — a rename of the open topic should not wipe a draft
+  // or queued attachments.
+  useEffect(() => {
     setPendingFiles([]);
     setDraft('');
-  }, [topic.id, topic.title]);
+  }, [topic.id]);
 
   // Scroll to bottom on new messages or topic switch.
   useEffect(() => {

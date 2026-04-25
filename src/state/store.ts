@@ -519,10 +519,18 @@ export const useStore = create<Store>()((set, get) => ({
 
       const fullMessage = { ...message, attachments: uploaded };
       const prev = get().state;
+      // Merge by id rather than always pushing: if uploads outlast the
+      // realtime debounce, loadFromServer may have already added the
+      // bare message to state.messages, and a naive push duplicates it.
+      const existsAt = prev.messages.findIndex((m) => m.id === fullMessage.id);
+      const nextMessages =
+        existsAt >= 0
+          ? prev.messages.map((m, i) => (i === existsAt ? fullMessage : m))
+          : [...prev.messages, fullMessage];
       set({
         state: {
           ...prev,
-          messages: [...prev.messages, fullMessage],
+          messages: nextMessages,
           topics: prev.topics.map((t) =>
             t.id === topicId ? { ...t, updatedAt: message.createdAt } : t,
           ),
