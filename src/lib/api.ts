@@ -5,9 +5,11 @@ import type {
   AttachmentKind,
   BudgetItem,
   Comment,
+  NoteMessage,
   Task,
   TaskPriority,
   TaskStatus,
+  Topic,
 } from '../types';
 
 // ─── DB row shapes ────────────────────────────────────────────
@@ -73,6 +75,23 @@ interface DbAttachment {
   created_at: string;
 }
 
+interface DbTopic {
+  id: number;
+  title: string;
+  created_by: string | null;
+  archived: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface DbNoteMessage {
+  id: number;
+  topic_id: number;
+  author_id: string | null;
+  body: string;
+  created_at: string;
+}
+
 // ─── load ─────────────────────────────────────────────────────
 
 export async function loadAppState(): Promise<AppState> {
@@ -84,6 +103,8 @@ export async function loadAppState(): Promise<AppState> {
     commentsRes,
     budgetRes,
     attachmentsRes,
+    topicsRes,
+    messagesRes,
   ] = await Promise.all([
     supabase.from('project_settings').select('*').eq('id', 1).single(),
     supabase.from('phases').select('*').order('sort_order'),
@@ -92,6 +113,8 @@ export async function loadAppState(): Promise<AppState> {
     supabase.from('comments').select('*').order('created_at'),
     supabase.from('budget_items').select('*').order('id'),
     supabase.from('attachments').select('*').order('created_at'),
+    supabase.from('notes_topics').select('*').order('updated_at', { ascending: false }),
+    supabase.from('note_messages').select('*').order('created_at'),
   ]);
 
   for (const r of [
@@ -102,6 +125,8 @@ export async function loadAppState(): Promise<AppState> {
     commentsRes,
     budgetRes,
     attachmentsRes,
+    topicsRes,
+    messagesRes,
   ]) {
     if (r.error) throw r.error;
   }
@@ -113,6 +138,8 @@ export async function loadAppState(): Promise<AppState> {
   const comments = (commentsRes.data ?? []) as DbComment[];
   const budget = (budgetRes.data ?? []) as DbBudgetItem[];
   const attachments = (attachmentsRes.data ?? []) as DbAttachment[];
+  const topics = (topicsRes.data ?? []) as DbTopic[];
+  const messages = (messagesRes.data ?? []) as DbNoteMessage[];
 
   const commentsByTask = new Map<number, Comment[]>();
   for (const c of comments) {
@@ -157,6 +184,29 @@ export async function loadAppState(): Promise<AppState> {
       estimate: +b.estimate,
       actual: +b.actual,
     })),
+    topics: topics.map(topicFromDb),
+    messages: messages.map(noteMessageFromDb),
+  };
+}
+
+function topicFromDb(t: DbTopic): Topic {
+  return {
+    id: t.id,
+    title: t.title,
+    createdBy: t.created_by,
+    archived: t.archived,
+    createdAt: t.created_at,
+    updatedAt: t.updated_at,
+  };
+}
+
+function noteMessageFromDb(m: DbNoteMessage): NoteMessage {
+  return {
+    id: m.id,
+    topicId: m.topic_id,
+    authorId: m.author_id,
+    body: m.body,
+    createdAt: m.created_at,
   };
 }
 
@@ -385,6 +435,61 @@ export async function updateSettingsRemote(patch: {
   if (error) throw error;
 }
 
+// ─── notes ────────────────────────────────────────────────────
+
+export async function createTopicRemote(
+  title: string,
+  createdBy: string,
+): Promise<Topic> {
+  const { data, error } = await supabase
+    .from('notes_topics')
+    .insert({ title: title.trim(), created_by: createdBy })
+    .select()
+    .single();
+  if (error) throw error;
+  return topicFromDb(data as DbTopic);
+}
+
+export async function updateTopicRemote(
+  id: number,
+  patch: { title?: string; archived?: boolean },
+) {
+  const dbPatch: Record<string, unknown> = {};
+  if (patch.title !== undefined) dbPatch.title = patch.title;
+  if (patch.archived !== undefined) dbPatch.archived = patch.archived;
+  const { error } = await supabase.from('notes_topics').update(dbPatch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteTopicRemote(id: number) {
+  const { error } = await supabase.from('notes_topics').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function addNoteMessageRemote(
+  topicId: number,
+  body: string,
+  authorId: string,
+): Promise<NoteMessage> {
+  const { data, error } = await supabase
+    .from('note_messages')
+    .insert({ topic_id: topicId, author_id: authorId, body })
+    .select()
+    .single();
+  if (error) throw error;
+  // Bump the topic's updated_at so the sidebar can sort by recent activity.
+  await supabase
+    .from('notes_topics')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('id', topicId);
+  return noteMessageFromDb(data as DbNoteMessage);
+}
+
+export async function deleteNoteMessageRemote(id: number) {
+  const { error } = await supabase.from('note_messages').delete().eq('id', id);
+  if (error) throw error;
+}
+
 // ─── realtime subscriptions ───────────────────────────────────
 
 export function subscribeToChanges(onChange: () => void) {
@@ -405,6 +510,16 @@ export function subscribeToChanges(onChange: () => void) {
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'attachments' },
+      onChange,
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'notes_topics' },
+      onChange,
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'note_messages' },
       onChange,
     )
     .subscribe();

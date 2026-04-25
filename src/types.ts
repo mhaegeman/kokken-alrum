@@ -59,6 +59,25 @@ export interface AppState {
   budgetItems: BudgetItem[];
   currency: string;
   totalBudgetTarget: number;
+  topics: Topic[];
+  messages: NoteMessage[];
+}
+
+export interface Topic {
+  id: number;
+  title: string;
+  createdBy: string | null;
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NoteMessage {
+  id: number;
+  topicId: number;
+  authorId: string | null;
+  body: string;
+  createdAt: string;
 }
 
 export type ViewId = 'home' | 'tasks' | 'timeline' | 'budget' | 'notes';

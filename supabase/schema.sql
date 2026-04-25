@@ -147,7 +147,29 @@ create table if not exists public.budget_items (
 create sequence if not exists public.budget_items_id_seq owned by public.budget_items.id;
 alter table public.budget_items alter column id set default nextval('public.budget_items_id_seq');
 
--- ─── 8. updated_at trigger helper ──────────────────────────────
+-- ─── 8. notes_topics + note_messages ───────────────────────────
+-- Shared discussion threads, one topic per subject (e.g. "Fridge choice").
+
+create table if not exists public.notes_topics (
+  id bigserial primary key,
+  title text not null,
+  created_by uuid references public.profiles(id) on delete set null,
+  archived boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.note_messages (
+  id bigserial primary key,
+  topic_id bigint not null references public.notes_topics(id) on delete cascade,
+  author_id uuid references public.profiles(id) on delete set null,
+  body text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists note_messages_topic_id_idx on public.note_messages(topic_id);
+
+-- ─── 9. updated_at trigger helper ──────────────────────────────
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -171,6 +193,11 @@ create trigger budget_items_updated_at
 drop trigger if exists project_settings_updated_at on public.project_settings;
 create trigger project_settings_updated_at
   before update on public.project_settings
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists notes_topics_updated_at on public.notes_topics;
+create trigger notes_topics_updated_at
+  before update on public.notes_topics
   for each row execute function public.set_updated_at();
 
 -- ═══════════════════════════════════════════════════════════════
@@ -254,6 +281,8 @@ alter table public.tasks              enable row level security;
 alter table public.comments           enable row level security;
 alter table public.budget_items       enable row level security;
 alter table public.attachments        enable row level security;
+alter table public.notes_topics       enable row level security;
+alter table public.note_messages      enable row level security;
 
 -- profiles: anyone logged in can read both profiles; you can only edit your own.
 drop policy if exists "profiles_read" on public.profiles;
@@ -305,6 +334,38 @@ create policy "attachments_update" on public.attachments for update
 create policy "attachments_delete" on public.attachments for delete
   to authenticated using (uploaded_by = auth.uid());
 
+-- notes_topics: anyone authed can read; anyone authed can create new topics;
+-- only the creator can update/delete (i.e. archive or remove their topic).
+drop policy if exists "notes_topics_read"   on public.notes_topics;
+drop policy if exists "notes_topics_insert" on public.notes_topics;
+drop policy if exists "notes_topics_update" on public.notes_topics;
+drop policy if exists "notes_topics_delete" on public.notes_topics;
+
+create policy "notes_topics_read"   on public.notes_topics for select
+  to authenticated using (true);
+create policy "notes_topics_insert" on public.notes_topics for insert
+  to authenticated with check (created_by = auth.uid());
+create policy "notes_topics_update" on public.notes_topics for update
+  to authenticated using (created_by = auth.uid()) with check (created_by = auth.uid());
+create policy "notes_topics_delete" on public.notes_topics for delete
+  to authenticated using (created_by = auth.uid());
+
+-- note_messages: anyone authed can read; can insert only as themselves;
+-- can update/delete only your own.
+drop policy if exists "note_messages_read"   on public.note_messages;
+drop policy if exists "note_messages_insert" on public.note_messages;
+drop policy if exists "note_messages_update" on public.note_messages;
+drop policy if exists "note_messages_delete" on public.note_messages;
+
+create policy "note_messages_read"   on public.note_messages for select
+  to authenticated using (true);
+create policy "note_messages_insert" on public.note_messages for insert
+  to authenticated with check (author_id = auth.uid());
+create policy "note_messages_update" on public.note_messages for update
+  to authenticated using (author_id = auth.uid()) with check (author_id = auth.uid());
+create policy "note_messages_delete" on public.note_messages for delete
+  to authenticated using (author_id = auth.uid());
+
 -- ═══════════════════════════════════════════════════════════════
 -- Storage — a private bucket for task attachments + policies so
 -- authenticated users can read / upload / delete objects in it.
@@ -353,7 +414,7 @@ alter default privileges in schema public grant all on routines to anon, authent
 do $$
 declare t text;
 begin
-  foreach t in array array['tasks','comments','budget_items','project_settings','attachments']
+  foreach t in array array['tasks','comments','budget_items','project_settings','attachments','notes_topics','note_messages']
   loop
     begin
       execute format('alter publication supabase_realtime add table public.%I', t);
