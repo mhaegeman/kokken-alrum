@@ -181,6 +181,25 @@ create table if not exists public.note_messages (
 
 create index if not exists note_messages_topic_id_idx on public.note_messages(topic_id);
 
+-- ─── 8a. attachments → note_messages link ──────────────────────
+-- Now that note_messages exists, allow attachments to point at one.
+-- Updates the XOR check so an attachment has exactly one parent
+-- among (task_id, budget_item_id, note_message_id).
+alter table public.attachments add column if not exists note_message_id bigint references public.note_messages(id) on delete cascade;
+
+alter table public.attachments drop constraint if exists attachments_payload_check;
+alter table public.attachments add constraint attachments_payload_check check (
+  (
+    (task_id is not null)::int
+    + (budget_item_id is not null)::int
+    + (note_message_id is not null)::int
+    = 1
+  )
+  and ((kind = 'file' and storage_path is not null) or (kind = 'link' and url is not null))
+);
+
+create index if not exists attachments_note_message_id_idx on public.attachments(note_message_id);
+
 -- ─── 8b. mentions ──────────────────────────────────────────────
 -- One row per (mentioned user, source row). Source can be a task
 -- comment OR a note message. Created automatically by triggers

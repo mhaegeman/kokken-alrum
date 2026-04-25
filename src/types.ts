@@ -34,6 +34,7 @@ export interface Attachment {
   id: number;
   taskId: number | null;
   budgetItemId: number | null;
+  noteMessageId: number | null;
   kind: AttachmentKind;
   filename: string;
   storagePath?: string | null;
@@ -46,7 +47,8 @@ export interface Attachment {
 
 export type AttachmentTarget =
   | { taskId: number }
-  | { budgetItemId: number };
+  | { budgetItemId: number }
+  | { noteMessageId: number };
 
 export interface BudgetItem {
   id: number;
@@ -99,6 +101,7 @@ export interface NoteMessage {
   authorId: string | null;
   body: string;
   createdAt: string;
+  attachments: Attachment[];
 }
 
 export type ViewId = 'home' | 'tasks' | 'timeline' | 'budget' | 'notes';

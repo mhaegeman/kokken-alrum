@@ -99,7 +99,12 @@ interface Store {
   createTopic: (title: string, createdBy: string) => Promise<number | null>;
   renameTopic: (id: number, title: string) => Promise<void>;
   deleteTopic: (id: number) => Promise<void>;
-  addNoteMessage: (topicId: number, body: string, authorId: string) => Promise<void>;
+  addNoteMessage: (
+    topicId: number,
+    body: string,
+    authorId: string,
+    files?: File[],
+  ) => Promise<void>;
   deleteNoteMessage: (id: number) => Promise<void>;
 
   markMentionsSeen: (ids: number[]) => Promise<void>;
@@ -490,16 +495,34 @@ export const useStore = create<Store>()((set, get) => ({
     );
   },
 
-  async addNoteMessage(topicId, body, authorId) {
+  async addNoteMessage(topicId, body, authorId, files) {
     const trimmed = body.trim();
-    if (!trimmed) return;
+    const pending = files ?? [];
+    if (!trimmed && pending.length === 0) return;
     try {
       const message = await addNoteMessageRemote(topicId, trimmed, authorId);
+
+      // Upload any attached files in parallel; a failure on one shouldn't
+      // lose the message we already saved.
+      const uploaded: Attachment[] = [];
+      if (pending.length > 0) {
+        const results = await Promise.allSettled(
+          pending.map((file) =>
+            uploadFileAttachment({ noteMessageId: message.id }, file, authorId),
+          ),
+        );
+        for (const r of results) {
+          if (r.status === 'fulfilled') uploaded.push(r.value);
+          else toast.error('Upload failed: ' + (r.reason as Error).message);
+        }
+      }
+
+      const fullMessage = { ...message, attachments: uploaded };
       const prev = get().state;
       set({
         state: {
           ...prev,
-          messages: [...prev.messages, message],
+          messages: [...prev.messages, fullMessage],
           topics: prev.topics.map((t) =>
             t.id === topicId ? { ...t, updatedAt: message.createdAt } : t,
           ),
