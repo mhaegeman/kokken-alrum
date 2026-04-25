@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { useStore, exportJson } from '../state/store';
 import { signOut, type Profile } from '../lib/auth';
 import { Avatar } from './Avatar';
 import { MentionsBell } from './MentionsBell';
+import { InvitesPanel } from './InvitesPanel';
 import type { ViewId } from '../types';
 
 export function TopBar({
@@ -10,17 +12,23 @@ export function TopBar({
   profilesById,
   onOpenTask,
   onOpenTopic,
+  isGuest,
 }: {
   onHome: (v: ViewId) => void;
   profile: Profile | null;
   profilesById: Record<string, Profile>;
   onOpenTask: (taskId: number) => void;
   onOpenTopic: (topicId: number) => void;
+  isGuest: boolean;
 }) {
   const state = useStore((s) => s.state);
+  const [invitesOpen, setInvitesOpen] = useState(false);
 
   const onSignOut = async () => {
-    if (!confirm('Sign out of Køkken alrum?')) return;
+    const msg = isGuest
+      ? 'Sign out of Køkken alrum? You can come back via your invite link.'
+      : 'Sign out of Køkken alrum?';
+    if (!confirm(msg)) return;
     await signOut();
   };
 
@@ -41,7 +49,7 @@ export function TopBar({
             <Avatar user="karo" title="Karo" />
           </div>
 
-          {profile && (
+          {profile && !isGuest && (
             <MentionsBell
               currentUserId={profile.id}
               profilesById={profilesById}
@@ -51,13 +59,24 @@ export function TopBar({
           )}
 
           <div className="menu">
-            <button className="icon-btn" onClick={() => exportJson(state)}>
-              Export
-            </button>
+            {!isGuest && (
+              <button
+                className="icon-btn"
+                onClick={() => setInvitesOpen(true)}
+                title="Manage guest invite links"
+              >
+                Invite
+              </button>
+            )}
+            {!isGuest && (
+              <button className="icon-btn" onClick={() => exportJson(state)}>
+                Export
+              </button>
+            )}
             {profile && (
               <span
                 className="topbar-user"
-                title={profile.email}
+                title={profile.email ?? undefined}
                 style={{
                   fontSize: 13,
                   color: 'var(--text-2)',
@@ -66,6 +85,7 @@ export function TopBar({
                 }}
               >
                 {profile.display_name}
+                {isGuest && <span className="guest-tag">guest</span>}
               </span>
             )}
             <button className="icon-btn danger" onClick={onSignOut}>
@@ -74,6 +94,13 @@ export function TopBar({
           </div>
         </div>
       </div>
+
+      {!isGuest && (
+        <InvitesPanel
+          open={invitesOpen}
+          onClose={() => setInvitesOpen(false)}
+        />
+      )}
     </header>
   );
 }

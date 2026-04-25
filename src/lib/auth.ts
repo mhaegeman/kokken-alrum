@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase, isConfigured } from './supabase';
 
 export interface Profile {
   id: string;
-  email: string;
+  email: string | null;
   display_name: string;
   tone: 'forest' | 'rose';
   avatar: 'palm' | 'rose';
+  is_guest: boolean;
 }
 
 export interface AuthState {
@@ -15,6 +16,9 @@ export interface AuthState {
   session: Session | null;
   profile: Profile | null;
   profiles: Profile[];
+  // True when the current user came in via an invite link (anonymous
+  // session) — used to gate edit / delete UI and project-wide writes.
+  isGuest: boolean;
 }
 
 export function useAuth(): AuthState {
@@ -47,7 +51,7 @@ export function useAuth(): AuthState {
     };
   }, []);
 
-  // Fetch profiles (ours + the other person's) once we have a session.
+  // Fetch profiles once we have a session.
   useEffect(() => {
     if (!session) {
       setProfile(null);
@@ -71,7 +75,17 @@ export function useAuth(): AuthState {
     };
   }, [session]);
 
-  return { loading, session, profile, profiles };
+  const isGuest = useMemo(() => {
+    // Trust the JWT first (set by Supabase on signInAnonymously) so the
+    // UI can decide before profile data arrives. Fall back to the
+    // profile.is_guest column.
+    if (session?.user && (session.user as { is_anonymous?: boolean }).is_anonymous) {
+      return true;
+    }
+    return Boolean(profile?.is_guest);
+  }, [session, profile]);
+
+  return { loading, session, profile, profiles, isGuest };
 }
 
 export async function sendMagicLink(email: string) {
@@ -100,4 +114,53 @@ export async function sendMagicLink(email: string) {
 
 export async function signOut() {
   await supabase.auth.signOut();
+}
+
+// ─── guest invites ─────────────────────────────────────────────
+
+export interface InvitePeek {
+  id: number;
+  label: string;
+  expires_at: string | null;
+}
+
+// Look up an invite token before asking the guest for their name. Returns
+// null when the token is unknown / revoked / expired so the UI can show
+// a "this link is no longer valid" message.
+export async function peekInvite(token: string): Promise<InvitePeek | null> {
+  const { data, error } = await supabase.rpc('peek_guest_invite', {
+    p_token: token,
+  });
+  if (error) {
+    console.warn('peek_guest_invite failed', error);
+    return null;
+  }
+  const rows = (data ?? []) as InvitePeek[];
+  return rows[0] ?? null;
+}
+
+// Sign in as a brand-new anonymous user, then claim the invite by writing
+// the chosen display name into the auto-created profile row. If the
+// guest already has an anonymous session we reuse it so revisiting the
+// link doesn't create duplicate profiles.
+export async function acceptInvite(token: string, displayName: string) {
+  const trimmed = displayName.trim();
+  if (!trimmed) throw new Error('Please enter a name.');
+  if (trimmed.length > 60) throw new Error('Name is too long (max 60).');
+
+  const { data: existing } = await supabase.auth.getSession();
+  if (!existing.session) {
+    const { error: signInErr } = await supabase.auth.signInAnonymously();
+    if (signInErr) {
+      throw new Error(
+        'Could not start a guest session: ' + signInErr.message,
+      );
+    }
+  }
+
+  const { error } = await supabase.rpc('accept_guest_invite', {
+    p_token: token,
+    p_display_name: trimmed,
+  });
+  if (error) throw error;
 }

@@ -626,6 +626,68 @@ export async function deleteNoteMessageRemote(id: number) {
   if (error) throw error;
 }
 
+// ─── guest invites ────────────────────────────────────────────
+
+export interface GuestInvite {
+  id: number;
+  token: string;
+  label: string;
+  createdBy: string | null;
+  createdAt: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+}
+
+interface DbGuestInvite {
+  id: number;
+  token: string;
+  label: string;
+  created_by: string | null;
+  created_at: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+}
+
+function inviteFromDb(r: DbGuestInvite): GuestInvite {
+  return {
+    id: r.id,
+    token: r.token,
+    label: r.label,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+    expiresAt: r.expires_at,
+    revokedAt: r.revoked_at,
+  };
+}
+
+export async function listInvitesRemote(): Promise<GuestInvite[]> {
+  const { data, error } = await supabase
+    .from('guest_invites')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r) => inviteFromDb(r as DbGuestInvite));
+}
+
+export async function createInviteRemote(
+  label: string,
+  expiresAt: string | null,
+): Promise<GuestInvite> {
+  const { data, error } = await supabase
+    .rpc('create_guest_invite', {
+      p_label: label,
+      p_expires_at: expiresAt,
+    })
+    .single();
+  if (error) throw error;
+  return inviteFromDb(data as DbGuestInvite);
+}
+
+export async function revokeInviteRemote(id: number): Promise<void> {
+  const { error } = await supabase.rpc('revoke_guest_invite', { p_id: id });
+  if (error) throw error;
+}
+
 // ─── mentions ─────────────────────────────────────────────────
 
 export async function markMentionsSeenRemote(ids: number[]): Promise<void> {
