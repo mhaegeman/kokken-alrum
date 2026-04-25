@@ -976,6 +976,163 @@ select:focus, input:focus {
 .bar-done    { opacity: 0.45; }
 .bar-blocked { background: var(--amber); color: #55400f; }
 
+/* Buttons inside the timeline (clickable rows + bars). */
+.timeline-label-btn {
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+}
+.timeline-label-btn:hover { color: var(--forest); }
+
+.timeline-bar-btn {
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+/* Timeline view mode toggle. */
+.timeline-mode-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  background: var(--linen);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  gap: 2px;
+}
+
+.timeline-mode-btn {
+  background: transparent;
+  border: none;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  border-radius: var(--radius-xs);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.timeline-mode-btn:hover { color: var(--text); }
+
+.timeline-mode-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+/* 14-day strip: highlight today. */
+.axis-week.axis-today {
+  color: var(--forest);
+  font-weight: 600;
+}
+
+/* Month calendar grid. */
+.month-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.month-title {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  margin: 0;
+  flex: 1;
+  text-align: center;
+}
+
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.month-dow {
+  background: var(--linen);
+  padding: 8px 10px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  text-align: left;
+}
+
+.month-cell {
+  background: var(--surface);
+  min-height: 90px;
+  padding: 6px 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.month-cell-empty { background: var(--linen); }
+
+.month-cell.is-today {
+  background: var(--forest-soft);
+}
+
+.month-day-num {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 500;
+  align-self: flex-end;
+}
+
+.is-today .month-day-num {
+  color: var(--forest);
+}
+
+.month-day-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.month-pill {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  color: white;
+}
+
+.month-pill.bar-phase-1 { color: #6b3b34; }
+.month-pill.bar-phase-2 { color: #2f4530; }
+.month-pill.bar-phase-4 { color: #55400f; }
+
+.month-more {
+  font-size: 10px;
+  color: var(--text-3);
+  padding: 0 2px;
+}
+
+@media (max-width: 640px) {
+  .month-cell { min-height: 64px; padding: 4px; }
+  .month-pill { font-size: 10px; padding: 1px 4px; }
+  .month-dow { padding: 6px 4px; font-size: 10px; }
+  .timeline-mode-toggle { margin-left: 0; }
+}
+
 /* ── budget ─────────────────────────────────────────────── */
 .budget-summary {
   display: grid;
@@ -1552,7 +1709,7 @@ select:focus, input:focus {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
+  padding: 8px 10px;
   background: var(--linen);
   border-radius: var(--radius-sm);
   font-size: 13px;
@@ -1561,6 +1718,96 @@ select:focus, input:focus {
 .attachment-icon {
   font-size: 14px;
   line-height: 1;
+}
+
+.attachment-thumb {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attachment-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.attachment-thumb:hover { border-color: var(--border-strong); }
+
+/* Drop zone wraps the attachments list and accepts drag-dropped files. */
+.drop-zone {
+  position: relative;
+  border: 1.5px dashed transparent;
+  border-radius: var(--radius);
+  padding: 4px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.drop-zone.empty {
+  padding: 18px 12px;
+  background: var(--linen);
+  border-color: var(--border);
+}
+
+.drop-zone.active {
+  border-color: var(--forest);
+  background: var(--forest-soft);
+}
+
+.drop-zone-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  color: var(--forest-ink);
+  background: rgba(228, 235, 230, 0.85);
+  border-radius: var(--radius);
+  pointer-events: none;
+}
+
+.attachment-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.attachment-actions .link-url-input { flex: 2; min-width: 200px; }
+.attachment-actions .link-label-input { flex: 1; min-width: 120px; }
+
+/* Paperclip pill on each budget row. */
+.paperclip-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.paperclip-btn:hover { background: var(--linen); color: var(--text); }
+.paperclip-btn.has-attach { color: var(--forest); border-color: var(--forest-soft); background: var(--forest-soft); }
+
+.budget-attachments {
+  padding: 14px 18px 16px;
+  border-top: 1px dashed var(--border);
+  background: var(--snow);
 }
 
 .attachment-name {

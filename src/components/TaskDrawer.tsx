@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Attachment, Task, TaskPriority, TaskStatus } from '../types';
+import { useEffect, useMemo, useState } from 'react';
+import type { Task, TaskPriority, TaskStatus } from '../types';
 import { useStore } from '../state/store';
-import { getAttachmentSignedUrl } from '../lib/api';
 import type { Profile } from '../lib/auth';
 import { Avatar } from './Avatar';
-import { formatDateShort } from '../lib/format';
 import { renderMarkdown } from '../lib/markdown';
+import { AttachmentList } from './AttachmentList';
 
 interface Props {
   openTaskId: number | null;
@@ -110,10 +109,6 @@ function DrawerBody({
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description);
   const [commentText, setCommentText] = useState('');
-  const [linkUrl, setLinkUrl] = useState('');
-  const [linkLabel, setLinkLabel] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null);
 
   const titleById = (id: number) =>
     state.tasks.find((tt) => tt.id === id)?.title ?? '?';
@@ -136,30 +131,6 @@ function DrawerBody({
     if (!v || !currentUserId) return;
     addTaskComment(task.id, v, currentUserId);
     setCommentText('');
-  };
-
-  const onPickFile = () => fileInput.current?.click();
-
-  const onFileChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file || !currentUserId) return;
-    if (file.size > 25 * 1024 * 1024) {
-      if (!confirm('That file is over 25 MB — continue anyway?')) return;
-    }
-    setUploading(true);
-    try {
-      await uploadTaskAttachment(task.id, file, currentUserId);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const onAddLink = async () => {
-    if (!linkUrl.trim() || !currentUserId) return;
-    await addTaskLink(task.id, linkUrl, linkLabel, currentUserId);
-    setLinkUrl('');
-    setLinkLabel('');
   };
 
   return (
@@ -292,70 +263,26 @@ function DrawerBody({
         </section>
 
         <section className="drawer-section">
-          <div className="drawer-section-head">
-            <h4>Attachments ({task.attachments.length})</h4>
-            <div className="drawer-section-actions">
-              <button
-                className="btn-quiet drawer-small-btn"
-                onClick={onPickFile}
-                disabled={!canEdit || uploading}
-              >
-                {uploading ? 'Uploading…' : 'Upload file'}
-              </button>
-              <input
-                ref={fileInput}
-                type="file"
-                hidden
-                onChange={onFileChosen}
-              />
-            </div>
-          </div>
-
-          <div className="attachments-list">
-            {task.attachments.length === 0 && (
-              <p className="attachment-empty">
-                No files or links yet.
-              </p>
-            )}
-            {task.attachments.map((a) => (
-              <AttachmentRow
-                key={a.id}
-                attachment={a}
-                uploaderName={
-                  a.uploadedBy ? profilesById[a.uploadedBy]?.display_name : null
-                }
-                canDelete={a.uploadedBy === currentUserId}
-                onDelete={() => deleteTaskAttachment(task.id, a)}
-              />
-            ))}
-          </div>
-
-          <div className="add-link-row">
-            <input
-              type="url"
-              placeholder="https://… (paste a link)"
-              value={linkUrl}
-              onChange={(e) => setLinkUrl(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') onAddLink();
-              }}
-              disabled={!canEdit}
-            />
-            <input
-              type="text"
-              placeholder="Label (optional)"
-              value={linkLabel}
-              onChange={(e) => setLinkLabel(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') onAddLink();
-              }}
-              disabled={!canEdit}
-              style={{ flex: 1 }}
-            />
-            <button className="btn-quiet drawer-small-btn" onClick={onAddLink} disabled={!canEdit}>
-              Add link
-            </button>
-          </div>
+          <h4>Attachments ({task.attachments.length})</h4>
+          <AttachmentList
+            attachments={task.attachments}
+            canEdit={canEdit}
+            currentUserId={currentUserId}
+            uploaderName={(id) =>
+              id ? profilesById[id]?.display_name : undefined
+            }
+            onUploadFile={(file) =>
+              currentUserId
+                ? uploadTaskAttachment(task.id, file, currentUserId)
+                : undefined
+            }
+            onAddLink={(url, label) =>
+              currentUserId
+                ? addTaskLink(task.id, url, label, currentUserId)
+                : undefined
+            }
+            onDelete={(a) => deleteTaskAttachment(task.id, a)}
+          />
         </section>
 
         <section className="drawer-section">
@@ -420,73 +347,3 @@ function DrawerBody({
   );
 }
 
-function AttachmentRow({
-  attachment,
-  uploaderName,
-  canDelete,
-  onDelete,
-}: {
-  attachment: Attachment;
-  uploaderName: string | null | undefined;
-  canDelete: boolean;
-  onDelete: () => void;
-}) {
-  const [opening, setOpening] = useState(false);
-
-  const isFile = attachment.kind === 'file';
-  const displayName = attachment.filename;
-  const sizeLabel = attachment.sizeBytes
-    ? formatSize(attachment.sizeBytes)
-    : null;
-  const createdLabel = formatDateShort(attachment.createdAt);
-
-  const open = async () => {
-    if (isFile) {
-      if (!attachment.storagePath) return;
-      setOpening(true);
-      try {
-        const url = await getAttachmentSignedUrl(attachment.storagePath);
-        window.open(url, '_blank', 'noopener,noreferrer');
-      } catch (e) {
-        alert("Couldn't open file: " + (e as Error).message);
-      } finally {
-        setOpening(false);
-      }
-    } else if (attachment.url) {
-      window.open(attachment.url, '_blank', 'noopener,noreferrer');
-    }
-  };
-
-  return (
-    <div className="attachment-row">
-      <span className="attachment-icon" aria-hidden="true">
-        {isFile ? '📄' : '🔗'}
-      </span>
-      <button className="attachment-name" onClick={open} disabled={opening}>
-        {opening ? 'Opening…' : displayName}
-      </button>
-      <span className="attachment-meta tnum">
-        {sizeLabel ? `${sizeLabel} · ` : ''}
-        {uploaderName ? `${uploaderName} · ` : ''}
-        {createdLabel}
-      </span>
-      {canDelete && (
-        <button
-          className="del-btn"
-          onClick={() => {
-            if (confirm(`Delete "${displayName}"?`)) onDelete();
-          }}
-          title="Delete"
-        >
-          ✕
-        </button>
-      )}
-    </div>
-  );
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}

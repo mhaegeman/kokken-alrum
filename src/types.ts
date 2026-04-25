@@ -32,7 +32,8 @@ export type AttachmentKind = 'file' | 'link';
 
 export interface Attachment {
   id: number;
-  taskId: number;
+  taskId: number | null;
+  budgetItemId: number | null;
   kind: AttachmentKind;
   filename: string;
   storagePath?: string | null;
@@ -43,12 +44,17 @@ export interface Attachment {
   createdAt: string;
 }
 
+export type AttachmentTarget =
+  | { taskId: number }
+  | { budgetItemId: number };
+
 export interface BudgetItem {
   id: number;
   category: string;
   name: string;
   estimate: number;
   actual: number;
+  attachments: Attachment[];
 }
 
 export interface AppState {

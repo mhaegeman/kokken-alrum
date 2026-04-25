@@ -3,6 +3,7 @@ import type {
   AppState,
   Attachment,
   AttachmentKind,
+  AttachmentTarget,
   BudgetItem,
   Comment,
   Mention,
@@ -66,7 +67,8 @@ interface DbBudgetItem {
 
 interface DbAttachment {
   id: number;
-  task_id: number;
+  task_id: number | null;
+  budget_item_id: number | null;
   kind: AttachmentKind;
   storage_path: string | null;
   url: string | null;
@@ -167,10 +169,18 @@ export async function loadAppState(): Promise<AppState> {
   }
 
   const attachmentsByTask = new Map<number, Attachment[]>();
+  const attachmentsByBudgetItem = new Map<number, Attachment[]>();
   for (const a of attachments) {
-    const list = attachmentsByTask.get(a.task_id) ?? [];
-    list.push(attachmentFromDb(a));
-    attachmentsByTask.set(a.task_id, list);
+    const dto = attachmentFromDb(a);
+    if (a.task_id != null) {
+      const list = attachmentsByTask.get(a.task_id) ?? [];
+      list.push(dto);
+      attachmentsByTask.set(a.task_id, list);
+    } else if (a.budget_item_id != null) {
+      const list = attachmentsByBudgetItem.get(a.budget_item_id) ?? [];
+      list.push(dto);
+      attachmentsByBudgetItem.set(a.budget_item_id, list);
+    }
   }
 
   return {
@@ -201,6 +211,7 @@ export async function loadAppState(): Promise<AppState> {
       name: b.name,
       estimate: +b.estimate,
       actual: +b.actual,
+      attachments: attachmentsByBudgetItem.get(b.id) ?? [],
     })),
     topics: topics.map(topicFromDb),
     messages: messages.map(noteMessageFromDb),
@@ -340,6 +351,7 @@ function attachmentFromDb(a: DbAttachment): Attachment {
   return {
     id: a.id,
     taskId: a.task_id,
+    budgetItemId: a.budget_item_id,
     kind: a.kind,
     filename: a.filename,
     storagePath: a.storage_path,
@@ -348,6 +360,25 @@ function attachmentFromDb(a: DbAttachment): Attachment {
     sizeBytes: a.size_bytes,
     uploadedBy: a.uploaded_by,
     createdAt: a.created_at,
+  };
+}
+
+function targetToInsert(target: AttachmentTarget): {
+  task_id: number | null;
+  budget_item_id: number | null;
+  pathPrefix: string;
+} {
+  if ('taskId' in target) {
+    return {
+      task_id: target.taskId,
+      budget_item_id: null,
+      pathPrefix: `task/${target.taskId}`,
+    };
+  }
+  return {
+    task_id: null,
+    budget_item_id: target.budgetItemId,
+    pathPrefix: `budget/${target.budgetItemId}`,
   };
 }
 
@@ -362,12 +393,13 @@ function sanitizeFilename(name: string): string {
 }
 
 export async function uploadFileAttachment(
-  taskId: number,
+  target: AttachmentTarget,
   file: File,
   uploaderId: string,
 ): Promise<Attachment> {
+  const t = targetToInsert(target);
   const safe = sanitizeFilename(file.name);
-  const path = `${taskId}/${Date.now()}-${safe}`;
+  const path = `${t.pathPrefix}/${Date.now()}-${safe}`;
 
   const { error: upErr } = await supabase.storage
     .from(ATTACH_BUCKET)
@@ -381,7 +413,8 @@ export async function uploadFileAttachment(
   const { data, error } = await supabase
     .from('attachments')
     .insert({
-      task_id: taskId,
+      task_id: t.task_id,
+      budget_item_id: t.budget_item_id,
       kind: 'file',
       storage_path: path,
       filename: file.name,
@@ -400,7 +433,7 @@ export async function uploadFileAttachment(
 }
 
 export async function addLinkAttachment(
-  taskId: number,
+  target: AttachmentTarget,
   url: string,
   label: string,
   uploaderId: string,
@@ -411,10 +444,12 @@ export async function addLinkAttachment(
     throw new Error('Links must start with http:// or https://');
   }
 
+  const t = targetToInsert(target);
   const { data, error } = await supabase
     .from('attachments')
     .insert({
-      task_id: taskId,
+      task_id: t.task_id,
+      budget_item_id: t.budget_item_id,
       kind: 'link',
       url: trimmedUrl,
       filename: trimmedLabel || trimmedUrl,
@@ -483,6 +518,7 @@ export async function addBudgetItemRemote(
     name: row.name,
     estimate: +row.estimate,
     actual: +row.actual,
+    attachments: [],
   };
 }
 

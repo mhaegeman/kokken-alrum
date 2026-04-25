@@ -113,10 +113,12 @@ create table if not exists public.comments (
 
 create index if not exists comments_task_id_idx on public.comments(task_id);
 
--- ─── 6b. attachments (files or external links, per task) ────────
+-- ─── 6b. attachments (files or external links, per task or budget item) ──
+-- The FK to budget_items + the XOR check are added after section 7 below,
+-- since budget_items is created later in this file.
 create table if not exists public.attachments (
   id bigserial primary key,
-  task_id integer not null references public.tasks(id) on delete cascade,
+  task_id integer references public.tasks(id) on delete cascade,
   kind text not null check (kind in ('file','link')),
   storage_path text,
   url text,
@@ -124,11 +126,7 @@ create table if not exists public.attachments (
   mime_type text,
   size_bytes bigint,
   uploaded_by uuid references public.profiles(id) on delete set null,
-  created_at timestamptz not null default now(),
-  constraint attachments_payload_check check (
-    (kind = 'file' and storage_path is not null) or
-    (kind = 'link' and url is not null)
-  )
+  created_at timestamptz not null default now()
 );
 
 create index if not exists attachments_task_id_idx on public.attachments(task_id);
@@ -146,6 +144,20 @@ create table if not exists public.budget_items (
 
 create sequence if not exists public.budget_items_id_seq owned by public.budget_items.id;
 alter table public.budget_items alter column id set default nextval('public.budget_items_id_seq');
+
+-- ─── 7b. attachments → budget_items link + XOR check ───────────
+-- Now that budget_items exists, add the FK column + the constraint that
+-- enforces "an attachment has exactly one parent (task or budget item)".
+alter table public.attachments alter column task_id drop not null;
+alter table public.attachments add column if not exists budget_item_id integer references public.budget_items(id) on delete cascade;
+
+alter table public.attachments drop constraint if exists attachments_payload_check;
+alter table public.attachments add constraint attachments_payload_check check (
+  ((task_id is not null) <> (budget_item_id is not null))
+  and ((kind = 'file' and storage_path is not null) or (kind = 'link' and url is not null))
+);
+
+create index if not exists attachments_budget_item_id_idx on public.attachments(budget_item_id);
 
 -- ─── 8. notes_topics + note_messages ───────────────────────────
 -- Shared discussion threads, one topic per subject (e.g. "Fridge choice").
