@@ -5,6 +5,11 @@ import type { Profile } from '../lib/auth';
 import { Avatar } from './Avatar';
 import { renderMarkdown } from '../lib/markdown';
 import { AttachmentList } from './AttachmentList';
+import {
+  forbiddenDepIds,
+  positionsByTaskId,
+  sortTasks,
+} from '../lib/taskOrder';
 
 interface Props {
   openTaskId: number | null;
@@ -81,6 +86,7 @@ function DrawerBody({
 }) {
   const state = useStore((s) => s.state);
   const updateTask = useStore((s) => s.updateTask);
+  const moveTask = useStore((s) => s.moveTask);
   const deleteTask = useStore((s) => s.deleteTask);
   const addTaskComment = useStore((s) => s.addTaskComment);
   const deleteTaskComment = useStore((s) => s.deleteTaskComment);
@@ -88,6 +94,12 @@ function DrawerBody({
   const addTaskLink = useStore((s) => s.addTaskLink);
   const deleteTaskAttachment = useStore((s) => s.deleteTaskAttachment);
   const markMentionsSeen = useStore((s) => s.markMentionsSeen);
+
+  const positions = useMemo(
+    () => positionsByTaskId(state.tasks),
+    [state.tasks],
+  );
+  const ownPosition = positions.get(task.id) ?? task.id;
 
   const mentionNames = useMemo(
     () => Object.values(profilesById).map((p) => p.display_name),
@@ -119,8 +131,6 @@ function DrawerBody({
   const [description, setDescription] = useState(task.description);
   const [commentText, setCommentText] = useState('');
 
-  const titleById = (id: number) =>
-    state.tasks.find((tt) => tt.id === id)?.title ?? '?';
   // Anyone authenticated (incl. guests) can post comments and upload
   // attachments; only full members can edit / delete the task itself.
   const canContribute = !!currentUserId;
@@ -151,9 +161,35 @@ function DrawerBody({
         <button className="drawer-close icon-btn" onClick={onClose} aria-label="Close">
           ✕
         </button>
-        <span className="drawer-crumb">
-          Phase {task.phase} · {state.phases[task.phase]?.name ?? '—'}
-        </span>
+        {canModify ? (
+          <label className="drawer-crumb drawer-phase-select">
+            Phase
+            <select
+              value={task.phase}
+              onChange={(e) => {
+                const newPhase = Number(e.target.value);
+                if (newPhase !== task.phase) {
+                  // Move to the end of the new phase. The user can drag
+                  // it further within the new phase from the Tasks view.
+                  const inNewPhase = state.tasks.filter(
+                    (t) => t.phase === newPhase && t.id !== task.id,
+                  ).length;
+                  moveTask(task.id, newPhase, inNewPhase);
+                }
+              }}
+            >
+              {Object.entries(state.phases).map(([id, p]) => (
+                <option key={id} value={id}>
+                  {id}. {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span className="drawer-crumb">
+            Phase {task.phase} · {state.phases[task.phase]?.name ?? '—'}
+          </span>
+        )}
         {canModify && (
           <button
             className="icon-btn danger drawer-delete"
@@ -176,7 +212,9 @@ function DrawerBody({
 
       <div className="drawer-scroll">
         <div className="drawer-title-row">
-          <span className="task-num drawer-task-num">#{task.id}</span>
+          <span className="task-num drawer-task-num" title={`Internal id: ${task.id}`}>
+            #{ownPosition}
+          </span>
           {canModify ? (
             <input
               className="drawer-title"
@@ -304,12 +342,13 @@ function DrawerBody({
               )}
             </div>
           )}
-          {task.deps && task.deps.length > 0 && (
-            <div className="deps">
-              <strong>Depends on:</strong>{' '}
-              {task.deps.map((d) => `#${d} ${titleById(d)}`).join(' · ')}
-            </div>
-          )}
+          <DepsEditor
+            task={task}
+            allTasks={state.tasks}
+            positions={positions}
+            canModify={canModify}
+            onChange={(deps) => updateTask(task.id, { deps })}
+          />
         </section>
 
         <section className="drawer-section">
@@ -401,6 +440,129 @@ function DrawerBody({
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+// ─── dependencies editor ──────────────────────────────────────
+
+function DepsEditor({
+  task,
+  allTasks,
+  positions,
+  canModify,
+  onChange,
+}: {
+  task: Task;
+  allTasks: Task[];
+  positions: Map<number, number>;
+  canModify: boolean;
+  onChange: (deps: number[]) => void;
+}) {
+  const taskById = useMemo(() => {
+    const m = new Map<number, Task>();
+    for (const t of allTasks) m.set(t.id, t);
+    return m;
+  }, [allTasks]);
+
+  // Tasks the user is *not* allowed to add as a dep (because doing so
+  // would create a cycle, or because they're already a dep, or it's the
+  // task itself). We pre-compute the set so the dropdown only shows
+  // valid choices.
+  const forbidden = useMemo(
+    () => forbiddenDepIds(task.id, allTasks),
+    [task.id, allTasks],
+  );
+
+  const candidates = useMemo(
+    () =>
+      sortTasks(allTasks).filter(
+        (t) =>
+          t.id !== task.id &&
+          !forbidden.has(t.id) &&
+          !task.deps.includes(t.id),
+      ),
+    [allTasks, task.id, task.deps, forbidden],
+  );
+
+  const remove = (depId: number) => {
+    onChange(task.deps.filter((d) => d !== depId));
+  };
+
+  const add = (depId: number) => {
+    if (!Number.isFinite(depId) || task.deps.includes(depId)) return;
+    onChange([...task.deps, depId]);
+  };
+
+  return (
+    <div className="deps deps-editor">
+      <div className="deps-head">
+        <strong>Depends on</strong>
+        <span className="deps-hint">
+          The scheduler will only start this task once these are done.
+        </span>
+      </div>
+
+      {task.deps.length === 0 && (
+        <p className="deps-empty">
+          No dependencies — this task can start any time.
+        </p>
+      )}
+
+      {task.deps.length > 0 && (
+        <div className="deps-chips">
+          {task.deps.map((d) => {
+            const dep = taskById.get(d);
+            const pos = positions.get(d) ?? d;
+            return (
+              <span key={d} className="dep-chip">
+                <span className="dep-chip-num tnum">#{pos}</span>
+                <span className="dep-chip-title">
+                  {dep?.title ?? 'unknown task'}
+                </span>
+                {canModify && (
+                  <button
+                    className="dep-chip-x"
+                    onClick={() => remove(d)}
+                    title="Remove this dependency"
+                    aria-label={`Remove dependency on ${dep?.title ?? d}`}
+                  >
+                    ✕
+                  </button>
+                )}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {canModify && candidates.length > 0 && (
+        <div className="deps-add">
+          <select
+            value=""
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (v) {
+                add(v);
+                e.currentTarget.value = '';
+              }
+            }}
+          >
+            <option value="">+ Add dependency…</option>
+            {candidates.map((c) => (
+              <option key={c.id} value={c.id}>
+                #{positions.get(c.id) ?? c.id} · {c.title}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {canModify && candidates.length === 0 && task.deps.length > 0 && (
+        <p className="deps-empty">
+          No more eligible tasks to depend on.
+        </p>
+      )}
     </div>
   );
 }

@@ -18,6 +18,7 @@ import {
   deleteTaskRemote,
   deleteTopicRemote,
   markMentionsSeenRemote,
+  moveTaskRemote,
   subscribeToChanges,
   updateBudgetItemRemote,
   updateContactRemote,
@@ -30,7 +31,7 @@ import { toast } from '../lib/toast';
 
 // Last-known-good cache of the AppState in localStorage so the UI can
 // paint from cache on cold start (and works read-only when offline).
-const CACHE_KEY = 'kokken_alrum_state_cache_v2';
+const CACHE_KEY = 'kokken_alrum_state_cache_v3';
 
 function loadCachedState(): AppState | null {
   try {
@@ -82,6 +83,11 @@ interface Store {
     duration: number;
   }) => Promise<number | null>;
   deleteTask: (id: number) => Promise<void>;
+  /** Move a task to a new (phase, position-within-phase). Position is the
+   *  desired index *after* the task is in place; pass 0 to insert at the
+   *  start of the phase. The store computes a sort_order between the
+   *  neighbours so we don't renumber unrelated tasks. */
+  moveTask: (id: number, toPhase: number, toIndexInPhase: number) => Promise<void>;
   addTaskComment: (taskId: number, text: string, authorId: string) => Promise<void>;
   deleteTaskComment: (taskId: number, commentId: number) => Promise<void>;
 
@@ -222,6 +228,52 @@ export const useStore = create<Store>()((set, get) => ({
           },
         }),
       () => deleteTaskRemote(id),
+      () => get().loadFromServer(),
+    );
+  },
+
+  async moveTask(id, toPhase, toIndexInPhase) {
+    const prev = get().state;
+    const moving = prev.tasks.find((t) => t.id === id);
+    if (!moving) return;
+
+    // Phase neighbours, excluding the moving task itself, sorted by current
+    // sort_order. The desired index is interpreted in this trimmed list.
+    const phaseTasks = prev.tasks
+      .filter((t) => t.phase === toPhase && t.id !== id)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+
+    const idx = Math.max(0, Math.min(toIndexInPhase, phaseTasks.length));
+    const before = phaseTasks[idx - 1]?.sortOrder;
+    const after = phaseTasks[idx]?.sortOrder;
+
+    let nextSort: number;
+    if (before === undefined && after === undefined) {
+      nextSort = 1;
+    } else if (before === undefined) {
+      nextSort = (after as number) - 1;
+    } else if (after === undefined) {
+      nextSort = before + 1;
+    } else {
+      nextSort = (before + after) / 2;
+    }
+
+    // No-op if the task is already exactly where it should be.
+    if (moving.phase === toPhase && moving.sortOrder === nextSort) return;
+
+    await withOptimistic(
+      () =>
+        set({
+          state: {
+            ...prev,
+            tasks: prev.tasks.map((t) =>
+              t.id === id
+                ? { ...t, phase: toPhase, sortOrder: nextSort }
+                : t,
+            ),
+          },
+        }),
+      () => moveTaskRemote(id, toPhase, nextSort),
       () => get().loadFromServer(),
     );
   },

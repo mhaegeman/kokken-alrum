@@ -135,6 +135,14 @@ create table if not exists public.tasks (
 -- Forward-compat: add description column if upgrading an older schema.
 alter table public.tasks add column if not exists description text not null default '';
 
+-- Forward-compat: add sort_order so tasks can be reordered independently
+-- of their stable id. Uses numeric so we can insert "between" two
+-- existing rows without re-numbering everything (new sort_order =
+-- average of neighbours).
+alter table public.tasks add column if not exists sort_order numeric not null default 0;
+update public.tasks set sort_order = id::numeric where sort_order = 0 and id is not null;
+create index if not exists tasks_phase_sort_idx on public.tasks(phase_id, sort_order, id);
+
 -- Keep an auto-incrementing sequence so inserts from the client can use it.
 create sequence if not exists public.tasks_id_seq owned by public.tasks.id;
 alter table public.tasks alter column id set default nextval('public.tasks_id_seq');
@@ -583,6 +591,11 @@ on conflict (id) do nothing;
 -- Bump sequence past seeded IDs so client-side inserts don't collide.
 select setval('public.tasks_id_seq',
               greatest((select coalesce(max(id), 0) from public.tasks), 13));
+
+-- After the seed insert, any newly-inserted tasks still have sort_order = 0
+-- (the column default). Re-run the backfill so they get a sensible initial
+-- order. Existing rows with non-zero sort_order are left alone.
+update public.tasks set sort_order = id::numeric where sort_order = 0;
 
 insert into public.budget_items (id, category_id, name, estimate, actual) values
   (1,  'design',     'Architect drawings',                       0,     0),

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useStore } from '../../state/store';
 import { computeSchedule } from '../../lib/schedule';
 import { addDays, diffDays, formatDateShort } from '../../lib/format';
+import { positionsByTaskId } from '../../lib/taskOrder';
 import type { Task } from '../../types';
 
 type Mode = 'gantt' | 'month' | 'fortnight';
@@ -20,6 +21,7 @@ export function TimelineView({
     () => state.tasks.map((t) => ({ task: t, ...schedule[t.id] })),
     [state.tasks, schedule],
   );
+  const positions = useMemo(() => positionsByTaskId(state.tasks), [state.tasks]);
   const projectStart = state.startDate;
   const projectEnd = entries.reduce(
     (max, e) => (e.end > max ? e.end : max),
@@ -56,6 +58,7 @@ export function TimelineView({
           projectStart={projectStart}
           projectEnd={projectEnd}
           state={state}
+          positions={positions}
           onOpenTask={onOpenTask}
         />
       )}
@@ -63,7 +66,12 @@ export function TimelineView({
         <MonthMode entries={entries} state={state} onOpenTask={onOpenTask} />
       )}
       {mode === 'fortnight' && (
-        <FortnightMode entries={entries} onOpenTask={onOpenTask} state={state} />
+        <FortnightMode
+          entries={entries}
+          onOpenTask={onOpenTask}
+          state={state}
+          positions={positions}
+        />
       )}
 
       <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 12 }}>
@@ -118,12 +126,14 @@ function GanttMode({
   projectStart,
   projectEnd,
   state,
+  positions,
   onOpenTask,
 }: {
   entries: ScheduledTask[];
   projectStart: string;
   projectEnd: string;
   state: StateLike;
+  positions: Map<number, number>;
   onOpenTask: (id: number) => void;
 }) {
   const totalDays = Math.max(7, diffDays(projectStart, projectEnd) + 1);
@@ -169,7 +179,7 @@ function GanttMode({
                 onClick={() => onOpenTask(task.id)}
                 title={`${task.title}\n${formatDateShort(start)} → ${formatDateShort(end)} (${task.duration}d)`}
               >
-                #{task.id} {task.title}
+                #{positions.get(task.id) ?? task.id} {task.title}
               </button>
               <div className="timeline-track">
                 <button
@@ -195,10 +205,12 @@ function FortnightMode({
   entries,
   onOpenTask,
   state,
+  positions,
 }: {
   entries: ScheduledTask[];
   onOpenTask: (id: number) => void;
   state: StateLike;
+  positions: Map<number, number>;
 }) {
   // Anchor: the project start, but no earlier than today minus 1 day so
   // it stays relevant if the project has begun.
@@ -254,7 +266,7 @@ function FortnightMode({
                   onClick={() => onOpenTask(task.id)}
                   title={`${task.title}\n${formatDateShort(s)} → ${formatDateShort(e)}`}
                 >
-                  #{task.id} {task.title}
+                  #{positions.get(task.id) ?? task.id} {task.title}
                 </button>
                 <div className="timeline-track">
                   <button
