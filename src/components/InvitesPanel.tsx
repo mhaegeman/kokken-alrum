@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   createInviteRemote,
   listInvitesRemote,
@@ -47,13 +47,27 @@ export function InvitesPanel({ open, onClose }: Props) {
     if (open) reload();
   }, [open]);
 
+  const openerRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      const opener = openerRef.current;
+      if (opener && document.contains(opener)) opener.focus();
+      openerRef.current = null;
+      return;
+    }
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) openerRef.current = active;
+
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
     }
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
   }, [open, onClose]);
 
   const onCreate = async () => {
@@ -110,7 +124,7 @@ export function InvitesPanel({ open, onClose }: Props) {
   return (
     <>
       <div className="drawer-backdrop open" onClick={onClose} aria-hidden="false" />
-      <div className="invites-modal" role="dialog" aria-label="Guest invites">
+      <div className="invites-modal" role="dialog" aria-modal="true" aria-label="Guest invites">
         <div className="invites-modal-head">
           <h2>Guest invite links</h2>
           <button

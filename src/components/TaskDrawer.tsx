@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Task, TaskPriority, TaskStatus } from '../types';
 import { useStore } from '../state/store';
 import type { Profile } from '../lib/auth';
@@ -30,9 +30,23 @@ export function TaskDrawer({
     openTaskId != null ? s.state.tasks.find((t) => t.id === openTaskId) : undefined,
   );
   const isOpen = Boolean(task);
+  const openerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      // Drawer just closed — restore focus to whatever opened it so
+      // keyboard users don't land back at <body>.
+      const opener = openerRef.current;
+      if (opener && document.contains(opener)) {
+        opener.focus();
+      }
+      openerRef.current = null;
+      return;
+    }
+    // Remember the focused element (the row/button that triggered open).
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) openerRef.current = active;
+
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
     }
@@ -54,6 +68,8 @@ export function TaskDrawer({
       <aside
         className={`drawer ${isOpen ? 'open' : ''}`}
         aria-hidden={!isOpen}
+        aria-modal={isOpen || undefined}
+        aria-label={task ? `Task: ${task.title}` : undefined}
         role="dialog"
       >
         {task && (
@@ -292,6 +308,7 @@ function DrawerBody({
                 <input
                   type="number"
                   min={0}
+                  inputMode="numeric"
                   value={task.duration || 0}
                   onChange={(e) =>
                     updateTask(task.id, {
@@ -405,7 +422,8 @@ function DrawerBody({
                     <button
                       className="comment-del"
                       onClick={() => deleteTaskComment(task.id, c.id as number)}
-                      title="Delete"
+                      title="Delete comment"
+                      aria-label={`Delete your comment from ${c.date}`}
                     >
                       ✕
                     </button>

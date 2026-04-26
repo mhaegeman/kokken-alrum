@@ -179,8 +179,9 @@ function ContactSidebar({
 
       <input
         className="contacts-search"
-        type="text"
+        type="search"
         placeholder="Search…"
+        aria-label="Search contacts"
         value={search}
         onChange={(e) => onSearch(e.target.value)}
       />
@@ -306,18 +307,25 @@ function ContactDetail({
           label="Phone"
           value={contact.phone}
           placeholder="+45 …"
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
           onSave={(v) => onSave({ phone: v })}
         />
         <ContactField
           label="Email"
           value={contact.email}
           placeholder="name@example.com"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
           onSave={(v) => onSave({ email: v })}
         />
         <ContactField
           label="Address"
           value={contact.address}
           placeholder="Street, postal code, city"
+          autoComplete="street-address"
           onSave={(v) => onSave({ address: v })}
         />
         <ContactField
@@ -383,12 +391,18 @@ function ContactField({
   value,
   placeholder,
   multiline,
+  type = 'text',
+  inputMode,
+  autoComplete,
   onSave,
 }: {
   label: string;
   value: string;
   placeholder?: string;
   multiline?: boolean;
+  type?: React.HTMLInputTypeAttribute;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
+  autoComplete?: string;
   onSave: (v: string) => void;
 }) {
   const [draft, setDraft] = useState(value);
@@ -417,7 +431,11 @@ function ContactField({
       ) : (
         <input
           ref={ref as React.Ref<HTMLInputElement>}
-          type="text"
+          type={type}
+          inputMode={inputMode}
+          autoComplete={autoComplete}
+          autoCapitalize={type === 'email' ? 'off' : undefined}
+          spellCheck={type === 'email' ? false : undefined}
           value={draft}
           placeholder={placeholder}
           onChange={(e) => setDraft(e.target.value)}
@@ -518,6 +536,7 @@ function ContactForm({
           <input
             ref={nameRef}
             type="text"
+            autoComplete="name"
             value={draft.name}
             placeholder="e.g. Anders Plumbing"
             onChange={(e) => setField('name', e.target.value)}
@@ -531,6 +550,7 @@ function ContactForm({
           <span className="contact-field-label">Role / company</span>
           <input
             type="text"
+            autoComplete="organization"
             value={draft.role}
             placeholder="e.g. Plumber, supplier, friend"
             onChange={(e) => setField('role', e.target.value)}
@@ -539,7 +559,9 @@ function ContactForm({
         <label className="contact-field">
           <span className="contact-field-label">Phone</span>
           <input
-            type="text"
+            type="tel"
+            autoComplete="tel"
+            inputMode="tel"
             value={draft.phone}
             placeholder="+45 …"
             onChange={(e) => setField('phone', e.target.value)}
@@ -548,7 +570,11 @@ function ContactForm({
         <label className="contact-field">
           <span className="contact-field-label">Email</span>
           <input
-            type="text"
+            type="email"
+            autoComplete="email"
+            inputMode="email"
+            autoCapitalize="off"
+            spellCheck={false}
             value={draft.email}
             placeholder="name@example.com"
             onChange={(e) => setField('email', e.target.value)}
@@ -558,6 +584,7 @@ function ContactForm({
           <span className="contact-field-label">Address</span>
           <input
             type="text"
+            autoComplete="street-address"
             value={draft.address}
             placeholder="Street, postal code, city"
             onChange={(e) => setField('address', e.target.value)}

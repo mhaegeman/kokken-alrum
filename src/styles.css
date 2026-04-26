@@ -1448,6 +1448,7 @@ select:focus, input:focus {
 /* ── login ──────────────────────────────────────────────── */
 .login-wrap {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1653,24 +1654,103 @@ select:focus, input:focus {
   outline-offset: 4px;
 }
 
+/* Make every interactive surface show a clear focus ring when reached
+   by keyboard. Without this, Tab navigation through icon-only buttons
+   (close, delete, copy, comment-delete, dep-chip-x, etc.) was invisible. */
+.icon-btn:focus-visible,
+.btn-primary:focus-visible,
+.btn-quiet:focus-visible,
+.btn-ghost:focus-visible,
+.nav-item:focus-visible,
+.drawer-close:focus-visible,
+.comment-del:focus-visible,
+.dep-chip-x:focus-visible,
+.bell-mark-all:focus-visible,
+.bell-item:focus-visible,
+.contact-row:focus-visible {
+  outline: 2px solid var(--forest);
+  outline-offset: 2px;
+}
+
+/* Cursor + disabled affordances. */
+button[disabled],
+button:disabled,
+.btn-primary:disabled,
+.btn-quiet:disabled,
+.btn-ghost:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Respect reduced-motion preferences. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Notch / safe-area support — applies to the sticky top bar so its
+   content clears the iOS notch / Dynamic Island, and the drawer so
+   its close + delete buttons aren't hidden under the notch. */
+.topbar {
+  padding-top: max(18px, env(safe-area-inset-top));
+}
+.drawer-head {
+  padding-top: max(14px, env(safe-area-inset-top));
+}
+.drawer-scroll {
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
 /* ── extra mobile polish ────────────────────────────────── */
 @media (max-width: 640px) {
   .container { padding: 0 16px; }
-  .topbar { padding: 14px 0; }
+  .topbar { padding: 14px 0; padding-top: max(14px, env(safe-area-inset-top)); }
   .topbar .container { gap: 10px; }
   .brand-sub { display: none; }
   .topbar-end { gap: 6px; }
   .menu .icon-btn { padding: 6px 8px; font-size: 12px; }
   .topbar-user { display: none; }
   .new-task-row { gap: 6px; }
-  .new-task-row select, .new-task-row input { font-size: 13px; padding: 7px 10px; }
+  .new-task-row select, .new-task-row input { font-size: 16px; padding: 8px 10px; }
   .nav .container { overflow-x: auto; }
-  .nav-item { margin-right: 18px; padding: 12px 0; flex-shrink: 0; }
+  .nav-item { margin-right: 18px; padding: 12px 0; flex-shrink: 0; min-height: 44px; }
   .stats { grid-template-columns: repeat(2, 1fr); }
   .home-summary { grid-template-columns: 1fr; gap: 10px; }
   .hero { padding: 40px 0 20px; }
   .toaster { bottom: 12px; right: 12px; left: 12px; }
   .toast { max-width: none; }
+
+  /* iOS auto-zooms inputs whose font-size is < 16px. Bump everything
+     in form fields up on small screens so focusing a text field never
+     forces a zoom-in. */
+  input, select, textarea {
+    font-size: 16px;
+  }
+  .drawer-textarea { font-size: 16px; }
+  .drawer-title { font-size: 18px; }
+
+  /* Make icon-only buttons reliably tappable (≥ 44×44 per WCAG/Apple). */
+  .icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .drawer-close { width: 44px; height: 44px; }
+  .bell-btn { width: 44px; height: 44px; }
+
+  /* Mentions dropdown — keep it within the viewport on small screens. */
+  .bell-dropdown {
+    right: 0;
+    left: auto;
+    max-width: calc(100vw - 24px);
+    width: 320px;
+  }
 }
 
 /* ── task drawer ────────────────────────────────────────── */
@@ -1694,6 +1774,7 @@ select:focus, input:focus {
   top: 0;
   right: 0;
   height: 100vh;
+  height: 100dvh;
   width: min(640px, 100vw);
   background: var(--bg);
   border-left: 1px solid var(--border);
@@ -3080,7 +3161,9 @@ select:focus, input:focus {
   transform: translate(-50%, -50%);
   width: min(640px, calc(100vw - 32px));
   max-height: calc(100vh - 64px);
+  max-height: min(calc(100vh - 64px), calc(100dvh - 32px));
   overflow: auto;
+  overscroll-behavior: contain;
   background: var(--surface, #fff);
   border: 1px solid var(--border, #ddd);
   border-radius: 14px;
