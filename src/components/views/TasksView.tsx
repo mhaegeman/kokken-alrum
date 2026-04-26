@@ -1,10 +1,17 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../../state/store';
-import type { TaskPriority, TaskStatus } from '../../types';
+import type { Task, TaskPriority, TaskStatus } from '../../types';
 import { toast } from '../../lib/toast';
+import { positionsByTaskId, sortTasks } from '../../lib/taskOrder';
 
 type StatusFilter = TaskStatus | 'all';
 type PriorityFilter = TaskPriority | 'all';
+
+// Where a drop indicator should appear when dragging.
+type DropTarget =
+  | { kind: 'phase-start'; phase: number }
+  | { kind: 'before-task'; taskId: number; phase: number }
+  | { kind: 'after-task'; taskId: number; phase: number };
 
 export function TasksView({
   onOpenTask,
@@ -15,18 +22,25 @@ export function TasksView({
 }) {
   const state = useStore((s) => s.state);
   const addTask = useStore((s) => s.addTask);
+  const moveTask = useStore((s) => s.moveTask);
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [phaseFilter, setPhaseFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
   const [adding, setAdding] = useState(false);
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 
   const phaseEntries = Object.entries(state.phases);
   const firstPhaseId = phaseEntries[0]?.[0] ?? '1';
 
-  const tasks = useMemo(
+  // Position map is computed across the *full* list (unfiltered), so the
+  // visible "#N" stays stable while the user fiddles with filters.
+  const positions = useMemo(() => positionsByTaskId(state.tasks), [state.tasks]);
+
+  const sortedTasks = useMemo(
     () =>
-      state.tasks.filter((t) => {
+      sortTasks(state.tasks).filter((t) => {
         if (statusFilter !== 'all' && t.status !== statusFilter) return false;
         if (phaseFilter !== 'all' && String(t.phase) !== phaseFilter) return false;
         if (priorityFilter !== 'all' && t.priority !== priorityFilter) return false;
@@ -35,7 +49,29 @@ export function TasksView({
     [state.tasks, statusFilter, phaseFilter, priorityFilter],
   );
 
-  let lastPhase: number | null = null;
+  const filtersActive =
+    statusFilter !== 'all' || phaseFilter !== 'all' || priorityFilter !== 'all';
+
+  const onDrop = async (target: DropTarget) => {
+    if (draggingId == null) return;
+    setDropTarget(null);
+    setDraggingId(null);
+    // Resolve to a (phase, indexInPhase) using the *full* unfiltered task
+    // list — drag-and-drop must respect the real layout, not the filtered
+    // view. Otherwise dropping while a filter is active would shuffle
+    // tasks the user can't see.
+    const allInPhase = sortTasks(state.tasks).filter(
+      (t) => t.phase === target.phase && t.id !== draggingId,
+    );
+    let idx: number;
+    if (target.kind === 'phase-start') {
+      idx = 0;
+    } else {
+      const refIdx = allInPhase.findIndex((t) => t.id === target.taskId);
+      idx = refIdx === -1 ? allInPhase.length : (target.kind === 'after-task' ? refIdx + 1 : refIdx);
+    }
+    await moveTask(draggingId, target.phase, idx);
+  };
 
   return (
     <>
@@ -100,52 +136,110 @@ export function TasksView({
         />
       )}
 
-      <div>
-        {tasks.length === 0 && (
+      {!isGuest && filtersActive && (
+        <p className="reorder-hint">
+          Clear filters to drag tasks around — drag-and-drop only works on the full list.
+        </p>
+      )}
+
+      <div onDragLeave={(e) => {
+        // If the drag leaves the entire list area, clear the indicator.
+        if (e.currentTarget === e.target) setDropTarget(null);
+      }}>
+        {sortedTasks.length === 0 && (
           <p className="empty">
             {state.tasks.length === 0
               ? 'No tasks yet. Click + New task to add one.'
               : 'No tasks match the current filters.'}
           </p>
         )}
-        {tasks.map((t) => {
-          const showPhase = t.phase !== lastPhase;
-          lastPhase = t.phase;
-          const attachCount = t.attachments?.length ?? 0;
-          const commentCount = t.comments?.length ?? 0;
+
+        {phaseEntries.map(([phaseIdStr, phase]) => {
+          const phaseId = Number(phaseIdStr);
+          const phaseTasks = sortedTasks.filter((t) => t.phase === phaseId);
+          if (phaseTasks.length === 0 && filtersActive) return null;
+          const draggable = !isGuest && !filtersActive;
+          const dropOnHeader =
+            dropTarget?.kind === 'phase-start' && dropTarget.phase === phaseId;
+
           return (
-            <div key={t.id}>
-              {showPhase && (
-                <div className="phase-header">
-                  Phase {t.phase} · {state.phases[t.phase]?.name}
-                </div>
-              )}
-              <button
-                className="task-row task-row-btn"
-                onClick={() => onOpenTask(t.id)}
+            <div key={phaseIdStr}>
+              <div
+                className={`phase-header ${draggable ? 'phase-header-droppable' : ''} ${
+                  dropOnHeader ? 'drop-target' : ''
+                }`}
+                onDragOver={(e) => {
+                  if (!draggable || draggingId == null) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  setDropTarget({ kind: 'phase-start', phase: phaseId });
+                }}
+                onDrop={(e) => {
+                  if (!draggable || draggingId == null) return;
+                  e.preventDefault();
+                  onDrop({ kind: 'phase-start', phase: phaseId });
+                }}
               >
-                <span className="task-num">#{t.id}</span>
-                <span className={`task-title ${t.status === 'done' ? 'done' : ''}`}>
-                  {t.title}
-                </span>
-                <span className="task-row-meta">
-                  {attachCount > 0 && (
-                    <span className="task-chip" title="Attachments">
-                      📎 {attachCount}
-                    </span>
-                  )}
-                  {commentCount > 0 && (
-                    <span className="task-chip" title="Comments">
-                      💬 {commentCount}
-                    </span>
-                  )}
-                  <span className="task-dur tnum">{t.duration || 0}d</span>
-                  <span className={`pill pill-${t.priority}`}>{t.priority}</span>
-                  <span className={`pill pill-${t.status}`}>
-                    {t.status.replace('_', ' ')}
-                  </span>
-                </span>
-              </button>
+                Phase {phaseIdStr} · {phase.name}
+              </div>
+
+              {phaseTasks.length === 0 && draggable && (
+                <p
+                  className={`phase-empty-drop ${dropOnHeader ? 'drop-target' : ''}`}
+                  onDragOver={(e) => {
+                    if (draggingId == null) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    setDropTarget({ kind: 'phase-start', phase: phaseId });
+                  }}
+                  onDrop={(e) => {
+                    if (draggingId == null) return;
+                    e.preventDefault();
+                    onDrop({ kind: 'phase-start', phase: phaseId });
+                  }}
+                >
+                  Drop a task here to add it to this phase.
+                </p>
+              )}
+
+              {phaseTasks.map((t) => {
+                const indicator =
+                  dropTarget &&
+                  dropTarget.kind !== 'phase-start' &&
+                  dropTarget.taskId === t.id
+                    ? dropTarget.kind
+                    : null;
+                return (
+                  <TaskRow
+                    key={t.id}
+                    task={t}
+                    position={positions.get(t.id) ?? t.id}
+                    isDragging={draggingId === t.id}
+                    indicator={indicator}
+                    draggable={draggable}
+                    onOpen={() => onOpenTask(t.id)}
+                    onDragStart={() => setDraggingId(t.id)}
+                    onDragEnd={() => {
+                      setDraggingId(null);
+                      setDropTarget(null);
+                    }}
+                    onDragOverRow={(pos) =>
+                      setDropTarget({
+                        kind: pos === 'top' ? 'before-task' : 'after-task',
+                        taskId: t.id,
+                        phase: t.phase,
+                      })
+                    }
+                    onDropOnRow={(pos) =>
+                      onDrop({
+                        kind: pos === 'top' ? 'before-task' : 'after-task',
+                        taskId: t.id,
+                        phase: t.phase,
+                      })
+                    }
+                  />
+                );
+              })}
             </div>
           );
         })}
@@ -153,6 +247,104 @@ export function TasksView({
     </>
   );
 }
+
+// ─── one task row ──────────────────────────────────────────────
+
+function TaskRow({
+  task,
+  position,
+  isDragging,
+  indicator,
+  draggable,
+  onOpen,
+  onDragStart,
+  onDragEnd,
+  onDragOverRow,
+  onDropOnRow,
+}: {
+  task: Task;
+  position: number;
+  isDragging: boolean;
+  indicator: 'before-task' | 'after-task' | null;
+  draggable: boolean;
+  onOpen: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onDragOverRow: (pos: 'top' | 'bottom') => void;
+  onDropOnRow: (pos: 'top' | 'bottom') => void;
+}) {
+  const attachCount = task.attachments?.length ?? 0;
+  const commentCount = task.comments?.length ?? 0;
+
+  return (
+    <div
+      className={`task-row-wrap ${indicator ? `drop-${indicator}` : ''}`}
+      draggable={draggable}
+      onDragStart={(e) => {
+        if (!draggable) return;
+        // Set a payload (some browsers require it for the drag to work)
+        // and a label for the drag image.
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(task.id));
+        onDragStart();
+      }}
+      onDragEnd={onDragEnd}
+      onDragOver={(e) => {
+        if (!draggable) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const r = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+        const pos = e.clientY < r.top + r.height / 2 ? 'top' : 'bottom';
+        onDragOverRow(pos);
+      }}
+      onDrop={(e) => {
+        if (!draggable) return;
+        e.preventDefault();
+        const r = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+        const pos = e.clientY < r.top + r.height / 2 ? 'top' : 'bottom';
+        onDropOnRow(pos);
+      }}
+    >
+      <button
+        className={`task-row task-row-btn ${isDragging ? 'dragging' : ''}`}
+        onClick={onOpen}
+      >
+        {draggable && (
+          <span
+            className="task-drag-handle"
+            aria-hidden="true"
+            title="Drag to reorder"
+          >
+            ⋮⋮
+          </span>
+        )}
+        <span className="task-num">#{position}</span>
+        <span className={`task-title ${task.status === 'done' ? 'done' : ''}`}>
+          {task.title}
+        </span>
+        <span className="task-row-meta">
+          {attachCount > 0 && (
+            <span className="task-chip" title="Attachments">
+              📎 {attachCount}
+            </span>
+          )}
+          {commentCount > 0 && (
+            <span className="task-chip" title="Comments">
+              💬 {commentCount}
+            </span>
+          )}
+          <span className="task-dur tnum">{task.duration || 0}d</span>
+          <span className={`pill pill-${task.priority}`}>{task.priority}</span>
+          <span className={`pill pill-${task.status}`}>
+            {task.status.replace('_', ' ')}
+          </span>
+        </span>
+      </button>
+    </div>
+  );
+}
+
+// ─── new task form ─────────────────────────────────────────────
 
 function NewTaskForm({
   phaseEntries,

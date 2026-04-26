@@ -664,6 +664,84 @@ select:focus, input:focus {
 
 .task-row:hover { border-color: var(--border-strong); }
 
+/* Drag-and-drop reorder for the Tasks view. The wrapper draws the
+   "drop above / drop below" indicator; the inner button stays the same
+   click target as before. */
+.task-row-wrap {
+  position: relative;
+}
+
+.task-row-wrap.drop-before-task::before,
+.task-row-wrap.drop-after-task::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--forest);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.task-row-wrap.drop-before-task::before { top: -3px; }
+.task-row-wrap.drop-after-task::after { bottom: -3px; }
+
+.task-row.dragging {
+  opacity: 0.5;
+}
+
+.task-drag-handle {
+  color: var(--text-3);
+  font-size: 14px;
+  letter-spacing: -2px;
+  cursor: grab;
+  user-select: none;
+  padding-right: 4px;
+}
+
+.task-row[draggable='true']:hover .task-drag-handle {
+  color: var(--text-2);
+}
+
+.phase-header-droppable {
+  cursor: copy;
+}
+
+.phase-header.drop-target {
+  color: var(--forest);
+  background: var(--forest-soft);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  margin-left: -8px;
+}
+
+.phase-empty-drop {
+  font-size: 12px;
+  color: var(--text-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  text-align: center;
+  margin: 0 0 10px;
+}
+
+.reorder-hint {
+  font-size: 12px;
+  color: var(--text-3);
+  margin: 4px 0 14px;
+}
+
+.drawer-phase-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.drawer-phase-select select {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
 .task-row-btn {
   width: 100%;
   display: flex;
@@ -792,6 +870,85 @@ select:focus, input:focus {
 }
 
 .deps strong { font-weight: 500; color: var(--text); }
+
+.deps-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--linen);
+}
+
+.deps-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.deps-hint {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.deps-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.deps-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dep-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text);
+  max-width: 100%;
+}
+
+.dep-chip-num {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.dep-chip-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+.dep-chip-x {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 999px;
+  padding: 0;
+  line-height: 1;
+}
+
+.dep-chip-x:hover {
+  background: var(--terra-soft);
+  color: var(--terra);
+}
+
+.deps-add select {
+  font-size: 13px;
+  background: var(--surface);
+}
 
 .comments h4 {
   font-size: 12px;

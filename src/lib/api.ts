@@ -48,6 +48,7 @@ interface DbTask {
   deps: number[];
   start_date: string | null;
   end_date: string | null;
+  sort_order: number | string;
 }
 
 interface DbComment {
@@ -142,7 +143,12 @@ export async function loadAppState(): Promise<AppState> {
     supabase.from('project_settings').select('*').eq('id', 1).single(),
     supabase.from('phases').select('*').order('sort_order'),
     supabase.from('budget_categories').select('*').order('sort_order'),
-    supabase.from('tasks').select('*').order('id'),
+    supabase
+      .from('tasks')
+      .select('*')
+      .order('phase_id')
+      .order('sort_order')
+      .order('id'),
     supabase.from('comments').select('*').order('created_at'),
     supabase.from('budget_items').select('*').order('id'),
     supabase.from('attachments').select('*').order('created_at'),
@@ -226,6 +232,7 @@ export async function loadAppState(): Promise<AppState> {
       deps: t.deps ?? [],
       start: t.start_date ?? '',
       end: t.end_date ?? '',
+      sortOrder: Number(t.sort_order ?? 0),
       comments: commentsByTask.get(t.id) ?? [],
       attachments: attachmentsByTask.get(t.id) ?? [],
     })),
@@ -293,6 +300,20 @@ export async function addTaskRemote(input: {
   status?: TaskStatus;
   deps?: number[];
 }): Promise<Task> {
+  // New tasks land at the end of their phase. We compute the next sort_order
+  // as max(sort_order in this phase) + 1; reordering can later move them.
+  const maxRes = await supabase
+    .from('tasks')
+    .select('sort_order')
+    .eq('phase_id', input.phase)
+    .order('sort_order', { ascending: false })
+    .limit(1);
+  if (maxRes.error) throw maxRes.error;
+  const maxSort = maxRes.data?.[0]
+    ? Number((maxRes.data[0] as { sort_order: number | string }).sort_order)
+    : 0;
+  const nextSort = (Number.isFinite(maxSort) ? maxSort : 0) + 1;
+
   const { data, error } = await supabase
     .from('tasks')
     .insert({
@@ -302,6 +323,7 @@ export async function addTaskRemote(input: {
       duration: input.duration,
       status: input.status ?? 'not_started',
       deps: input.deps ?? [],
+      sort_order: nextSort,
     })
     .select()
     .single();
@@ -318,6 +340,7 @@ export async function addTaskRemote(input: {
     deps: t.deps ?? [],
     start: t.start_date ?? '',
     end: t.end_date ?? '',
+    sortOrder: Number(t.sort_order ?? nextSort),
     comments: [],
     attachments: [],
   };
@@ -339,8 +362,22 @@ export async function updateTaskRemote(id: number, patch: Partial<Task>) {
   if (patch.end !== undefined) dbPatch.end_date = patch.end || null;
   if (patch.phase !== undefined) dbPatch.phase_id = patch.phase;
   if (patch.deps !== undefined) dbPatch.deps = patch.deps;
+  if (patch.sortOrder !== undefined) dbPatch.sort_order = patch.sortOrder;
 
   const { error } = await supabase.from('tasks').update(dbPatch).eq('id', id);
+  if (error) throw error;
+}
+
+/** Move a task to a new phase + sort_order in a single round-trip. */
+export async function moveTaskRemote(
+  id: number,
+  phase: number,
+  sortOrder: number,
+) {
+  const { error } = await supabase
+    .from('tasks')
+    .update({ phase_id: phase, sort_order: sortOrder })
+    .eq('id', id);
   if (error) throw error;
 }
 

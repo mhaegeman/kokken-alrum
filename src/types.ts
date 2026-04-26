@@ -24,6 +24,9 @@ export interface Task {
   deps: number[];
   start: string;
   end: string;
+  /** Used to order tasks within their phase. Stored separately from id
+   *  so reordering doesn't need to renumber referenced ids. */
+  sortOrder: number;
   comments: Comment[];
   attachments: Attachment[];
 }
