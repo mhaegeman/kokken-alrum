@@ -51,10 +51,21 @@ export function ContactsView({
     );
   }, [sortedContacts, search]);
 
-  // Auto-select the first contact if nothing is selected and the list isn't
-  // empty; clear selection if the chosen contact disappears (e.g. deleted).
+  // Auto-select the first contact on desktop only. On mobile the layout
+  // shows either the list or one detail pane (the back arrow toggles
+  // between them); auto-selecting would skip past the list and break
+  // back since the effect would immediately re-select after the back
+  // tap cleared the selection.
   useEffect(() => {
-    if (selectedContactId == null && filteredContacts.length > 0 && !adding) {
+    const isMobile =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(max-width: 720px)').matches;
+    if (
+      !isMobile &&
+      selectedContactId == null &&
+      filteredContacts.length > 0 &&
+      !adding
+    ) {
       onSelectContact(filteredContacts[0].id);
     }
     if (
