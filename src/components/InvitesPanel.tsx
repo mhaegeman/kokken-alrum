@@ -6,6 +6,7 @@ import {
   type GuestInvite,
 } from '../lib/api';
 import { toast } from '../lib/toast';
+import { confirm } from '../lib/confirm';
 
 interface Props {
   open: boolean;
@@ -104,9 +105,13 @@ export function InvitesPanel({ open, onClose }: Props) {
   };
 
   const onRevoke = async (i: GuestInvite) => {
-    if (!confirm(`Revoke this invite link? Anyone using it will lose access.`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Revoke invite link?',
+      message: 'Anyone using this link will lose access immediately.',
+      confirmLabel: 'Revoke',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await revokeInviteRemote(i.id);
       setInvites((prev) =>

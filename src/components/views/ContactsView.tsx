@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../state/store';
 import type { Contact } from '../../types';
+import { confirm } from '../../lib/confirm';
 
 interface Props {
   currentUserId: string | null;
@@ -111,10 +112,14 @@ export function ContactsView({
             contact={selectedContact}
             isGuest={isGuest}
             onSave={(patch) => updateContact(selectedContact.id, patch)}
-            onDelete={() => {
-              if (
-                confirm(`Delete contact "${selectedContact.name}"?`)
-              ) {
+            onDelete={async () => {
+              const ok = await confirm({
+                title: 'Delete contact?',
+                message: `"${selectedContact.name}" will be removed from the project address book.`,
+                confirmLabel: 'Delete contact',
+                danger: true,
+              });
+              if (ok) {
                 deleteContact(selectedContact.id);
                 onSelectContact(null);
               }

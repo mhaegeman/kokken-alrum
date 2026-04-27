@@ -3296,3 +3296,194 @@ button:disabled,
 .invite-badge-revoked  { background: #fbe7e7; border-color: #f3cfcf; color: #8c2828; }
 .invite-badge-expired  { background: #f1efe4; border-color: #e3dfc8; color: #7a6a3a; }
 
+/* ── confirm dialog ────────────────────────────────────────── */
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 22, 20, 0.42);
+  z-index: 70;
+  animation: fade-in 0.15s ease;
+}
+
+.confirm-dialog {
+  position: fixed;
+  z-index: 71;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 32px));
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #ddd);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.22);
+  padding: 22px 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: confirm-pop 0.18s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes confirm-pop {
+  from { opacity: 0; transform: translate(-50%, -48%) scale(0.96); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+.confirm-title {
+  margin: 0;
+  font-size: 18px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+}
+
+.confirm-message {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.btn-primary.btn-danger {
+  background: var(--terra, #b14a3a);
+}
+.btn-primary.btn-danger:hover {
+  background: var(--terra-ink, #8b2f23);
+}
+
+@media (max-width: 640px) {
+  .confirm-dialog {
+    width: calc(100vw - 24px);
+    max-width: none;
+    padding: 18px 18px 16px;
+  }
+  .confirm-actions { flex-wrap: wrap; }
+  .confirm-actions .btn-primary,
+  .confirm-actions .btn-quiet { flex: 1; min-width: 0; }
+}
+
+/* ── mention autocomplete popup ───────────────────────────── */
+.mention-input-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+.mention-input-wrap > input,
+.mention-input-wrap > textarea {
+  width: 100%;
+}
+
+.mention-popup {
+  position: absolute;
+  /* Default: below the input. The composer/textarea variants override
+     this to bottom: 100% so the menu appears above instead. */
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: auto;
+  z-index: 65;
+  min-width: 240px;
+  max-width: min(360px, calc(100vw - 24px));
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #ddd);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mention-option {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  transition: background 0.1s;
+}
+.mention-option.active,
+.mention-option:hover {
+  background: var(--linen);
+}
+.mention-option-icon {
+  font-size: 14px;
+  text-align: center;
+}
+.mention-option-label {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mention-option-handle {
+  color: var(--text-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── budget target input ──────────────────────────────────── */
+.budget-target-input {
+  width: 100%;
+  background: transparent;
+  border: 1px dashed transparent;
+  border-radius: 6px;
+  padding: 2px 6px;
+  margin: 0 -6px;
+  color: inherit;
+  font: inherit;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.budget-target-input::-webkit-outer-spin-button,
+.budget-target-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.budget-target-input:hover {
+  border-color: var(--border);
+}
+.budget-target-input:focus {
+  outline: none;
+  border-color: var(--forest);
+  border-style: solid;
+  background: var(--surface);
+}
+
+/* ── tappable empty drop zone (touch + click) ─────────────── */
+.drop-zone.tappable {
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.drop-zone.tappable:hover,
+.drop-zone.tappable:focus-visible {
+  background: var(--linen);
+  border-color: var(--forest);
+}
+@media (hover: none) {
+  /* Touch devices: emphasise the tap affordance since drag/drop won't fire. */
+  .drop-zone.tappable .attachment-empty {
+    color: var(--text);
+    font-weight: 500;
+  }
+}

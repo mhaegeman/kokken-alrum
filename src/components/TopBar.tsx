@@ -4,6 +4,7 @@ import { signOut, type Profile } from '../lib/auth';
 import { Avatar } from './Avatar';
 import { MentionsBell } from './MentionsBell';
 import { InvitesPanel } from './InvitesPanel';
+import { confirm } from '../lib/confirm';
 import type { ViewId } from '../types';
 
 export function TopBar({
@@ -25,10 +26,14 @@ export function TopBar({
   const [invitesOpen, setInvitesOpen] = useState(false);
 
   const onSignOut = async () => {
-    const msg = isGuest
-      ? 'Sign out of Køkken alrum? You can come back via your invite link.'
-      : 'Sign out of Køkken alrum?';
-    if (!confirm(msg)) return;
+    const ok = await confirm({
+      title: 'Sign out?',
+      message: isGuest
+        ? 'You can come back any time via your invite link.'
+        : "We'll send you back to the login screen.",
+      confirmLabel: 'Sign out',
+    });
+    if (!ok) return;
     await signOut();
   };
 

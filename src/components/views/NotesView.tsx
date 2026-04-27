@@ -5,6 +5,12 @@ import type { NoteMessage, Topic } from '../../types';
 import { Avatar } from '../Avatar';
 import { MessageAttachments } from '../MessageAttachments';
 import { renderMarkdown, type MentionContact } from '../../lib/markdown';
+import { confirm } from '../../lib/confirm';
+import {
+  buildMentionItems,
+  useMentionAutocomplete,
+  type MentionItem,
+} from '../MentionAutocomplete';
 
 interface Props {
   currentUserId: string | null;
@@ -39,6 +45,18 @@ export function NotesView({
   const mentionContacts = useMemo(
     () => state.contacts.map((c) => ({ id: c.id, name: c.name })),
     [state.contacts],
+  );
+  const mentionItems = useMemo(
+    () =>
+      buildMentionItems({
+        users: Object.values(profilesById).map((p) => ({
+          id: p.id,
+          display_name: p.display_name,
+        })),
+        contacts: state.contacts,
+        selfId: currentUserId,
+      }),
+    [profilesById, state.contacts, currentUserId],
   );
 
   // Auto-select the first topic once data loads / topics change.
@@ -111,6 +129,7 @@ export function NotesView({
             profilesById={profilesById}
             mentionNames={mentionNames}
             mentionContacts={mentionContacts}
+            mentionItems={mentionItems}
             isGuest={isGuest}
             onSend={(body, files) =>
               currentUserId &&
@@ -118,14 +137,14 @@ export function NotesView({
             }
             onDeleteMessage={(id) => deleteNoteMessage(id)}
             onRename={(title) => renameTopic(selectedTopic.id, title)}
-            onDelete={() => {
-              if (
-                confirm(
-                  `Delete topic "${selectedTopic.title}" and all its messages?`,
-                )
-              ) {
-                deleteTopic(selectedTopic.id);
-              }
+            onDelete={async () => {
+              const ok = await confirm({
+                title: 'Delete topic?',
+                message: `"${selectedTopic.title}" and all its messages will be permanently deleted.`,
+                confirmLabel: 'Delete topic',
+                danger: true,
+              });
+              if (ok) deleteTopic(selectedTopic.id);
             }}
             onBack={() => onSelectTopic(null)}
           />
@@ -252,6 +271,7 @@ function TopicThread({
   profilesById,
   mentionNames,
   mentionContacts,
+  mentionItems,
   isGuest,
   onSend,
   onDeleteMessage,
@@ -265,6 +285,7 @@ function TopicThread({
   profilesById: Record<string, Profile>;
   mentionNames: string[];
   mentionContacts: MentionContact[];
+  mentionItems: MentionItem[];
   isGuest: boolean;
   onSend: (body: string, files: File[]) => void;
   onDeleteMessage: (id: number) => void;
@@ -280,6 +301,13 @@ function TopicThread({
   const [titleDraft, setTitleDraft] = useState(topic.title);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const composerMention = useMentionAutocomplete<HTMLTextAreaElement>({
+    value: draft,
+    onChange: setDraft,
+    items: mentionItems,
+    inputRef: composerRef,
+  });
 
   // Keep the title-edit field in sync with the source of truth so that
   // realtime renames (or our own saves) reflect immediately.
@@ -317,13 +345,19 @@ function TopicThread({
     }
   };
 
-  const addPendingFiles = (files: FileList | File[]) => {
-    const fresh = Array.from(files).filter((f) => {
+  const addPendingFiles = async (files: FileList | File[]) => {
+    const fresh: File[] = [];
+    for (const f of Array.from(files)) {
       if (f.size > 25 * 1024 * 1024) {
-        return confirm(`${f.name} is over 25 MB — continue anyway?`);
+        const ok = await confirm({
+          title: 'Large file',
+          message: `${f.name} is over 25 MB — attach anyway?`,
+          confirmLabel: 'Attach',
+        });
+        if (!ok) continue;
       }
-      return true;
-    });
+      fresh.push(f);
+    }
     if (fresh.length > 0) setPendingFiles((p) => [...p, ...fresh]);
   };
 
@@ -491,23 +525,28 @@ function TopicThread({
               ))}
             </div>
           )}
-          <textarea
-            rows={2}
-            placeholder={
-              currentUserId
-                ? 'Reply… (Enter to send, Shift+Enter newline, try @max or @karo, drag in files)'
-                : 'Sign in to reply'
-            }
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                submitMessage();
+          <div className="mention-input-wrap">
+            <textarea
+              ref={composerRef}
+              rows={2}
+              placeholder={
+                currentUserId
+                  ? 'Reply… (Enter to send, Shift+Enter newline, type @ to mention, drag in files)'
+                  : 'Sign in to reply'
               }
-            }}
-            disabled={!currentUserId || sending}
-          />
+              value={draft}
+              onChange={composerMention.onChange}
+              onKeyDown={(e) => {
+                if (composerMention.onKeyDown(e)) return;
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  submitMessage();
+                }
+              }}
+              disabled={!currentUserId || sending}
+            />
+            {composerMention.popup}
+          </div>
         </div>
 
         <div className="composer-actions">
