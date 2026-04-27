@@ -13,7 +13,15 @@ import { NotesView } from './components/views/NotesView';
 import { ContactsView } from './components/views/ContactsView';
 import { TaskDrawer } from './components/TaskDrawer';
 import { Toaster } from './components/Toaster';
-import { HomeSkeleton } from './components/Skeleton';
+import { ConfirmHost } from './components/ConfirmDialog';
+import {
+  HomeSkeleton,
+  TasksSkeleton,
+  BudgetSkeleton,
+  TimelineSkeleton,
+  NotesSkeleton,
+  ContactsSkeleton,
+} from './components/Skeleton';
 import { useAuth, type Profile } from './lib/auth';
 import { useStore } from './state/store';
 
@@ -169,7 +177,9 @@ function Authenticated({
       />
       <Nav current={view} onChange={setView} />
       <main className="container">
-        {(status === 'loading' || status === 'idle') && <HomeSkeleton />}
+        {(status === 'loading' || status === 'idle') && (
+          <ViewSkeleton view={view} />
+        )}
         {status === 'error' && (
           <div
             className="login-error"
@@ -256,8 +266,29 @@ function Authenticated({
       />
 
       <Toaster />
+      <ConfirmHost />
     </>
   );
+}
+
+// Switches between per-view skeletons during the initial Supabase load so
+// users see the shape of the page they navigated to (rather than always
+// seeing the home skeleton, which felt jarring when deep-linking).
+function ViewSkeleton({ view }: { view: ViewId }) {
+  switch (view) {
+    case 'tasks':
+      return <TasksSkeleton />;
+    case 'budget':
+      return <BudgetSkeleton />;
+    case 'timeline':
+      return <TimelineSkeleton />;
+    case 'notes':
+      return <NotesSkeleton />;
+    case 'contacts':
+      return <ContactsSkeleton />;
+    default:
+      return <HomeSkeleton />;
+  }
 }
 
 function LoadingSplash() {

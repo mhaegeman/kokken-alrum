@@ -1,10 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Task, TaskPriority, TaskStatus } from '../types';
 import { useStore } from '../state/store';
 import type { Profile } from '../lib/auth';
 import { Avatar } from './Avatar';
 import { renderMarkdown } from '../lib/markdown';
 import { AttachmentList } from './AttachmentList';
+import { confirm } from '../lib/confirm';
+import {
+  buildMentionItems,
+  useMentionAutocomplete,
+} from './MentionAutocomplete';
 import {
   forbiddenDepIds,
   positionsByTaskId,
@@ -30,9 +35,23 @@ export function TaskDrawer({
     openTaskId != null ? s.state.tasks.find((t) => t.id === openTaskId) : undefined,
   );
   const isOpen = Boolean(task);
+  const openerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      // Drawer just closed — restore focus to whatever opened it so
+      // keyboard users don't land back at <body>.
+      const opener = openerRef.current;
+      if (opener && document.contains(opener)) {
+        opener.focus();
+      }
+      openerRef.current = null;
+      return;
+    }
+    // Remember the focused element (the row/button that triggered open).
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) openerRef.current = active;
+
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
     }
@@ -54,6 +73,8 @@ export function TaskDrawer({
       <aside
         className={`drawer ${isOpen ? 'open' : ''}`}
         aria-hidden={!isOpen}
+        aria-modal={isOpen || undefined}
+        aria-label={task ? `Task: ${task.title}` : undefined}
         role="dialog"
       >
         {task && (
@@ -109,6 +130,18 @@ function DrawerBody({
     () => state.contacts.map((c) => ({ id: c.id, name: c.name })),
     [state.contacts],
   );
+  const mentionItems = useMemo(
+    () =>
+      buildMentionItems({
+        users: Object.values(profilesById).map((p) => ({
+          id: p.id,
+          display_name: p.display_name,
+        })),
+        contacts: state.contacts,
+        selfId: currentUserId,
+      }),
+    [profilesById, state.contacts, currentUserId],
+  );
 
   // Mark this task's unread mentions for me as seen when the drawer opens.
   useEffect(() => {
@@ -130,6 +163,13 @@ function DrawerBody({
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description);
   const [commentText, setCommentText] = useState('');
+  const commentRef = useRef<HTMLInputElement>(null);
+  const commentMention = useMentionAutocomplete<HTMLInputElement>({
+    value: commentText,
+    onChange: setCommentText,
+    items: mentionItems,
+    inputRef: commentRef,
+  });
 
   // Anyone authenticated (incl. guests) can post comments and upload
   // attachments; only full members can edit / delete the task itself.
@@ -193,12 +233,14 @@ function DrawerBody({
         {canModify && (
           <button
             className="icon-btn danger drawer-delete"
-            onClick={() => {
-              if (
-                confirm(
-                  `Delete task "${task.title}"?\nThis will also remove its comments and attachments. This cannot be undone.`,
-                )
-              ) {
+            onClick={async () => {
+              const ok = await confirm({
+                title: 'Delete task?',
+                message: `"${task.title}" and all its comments and attachments will be permanently deleted.`,
+                confirmLabel: 'Delete task',
+                danger: true,
+              });
+              if (ok) {
                 deleteTask(task.id);
                 onClose();
               }
@@ -292,6 +334,7 @@ function DrawerBody({
                 <input
                   type="number"
                   min={0}
+                  inputMode="numeric"
                   value={task.duration || 0}
                   onChange={(e) =>
                     updateTask(task.id, {
@@ -405,7 +448,8 @@ function DrawerBody({
                     <button
                       className="comment-del"
                       onClick={() => deleteTaskComment(task.id, c.id as number)}
-                      title="Delete"
+                      title="Delete comment"
+                      aria-label={`Delete your comment from ${c.date}`}
                     >
                       ✕
                     </button>
@@ -415,20 +459,25 @@ function DrawerBody({
             })}
 
             <div className="comment-add">
-              <input
-                type="text"
-                placeholder={
-                  canContribute
-                    ? 'Add a comment… (try @max or @karo)'
-                    : 'Sign in to comment'
-                }
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') onAddComment();
-                }}
-                disabled={!canContribute}
-              />
+              <div className="mention-input-wrap">
+                <input
+                  ref={commentRef}
+                  type="text"
+                  placeholder={
+                    canContribute
+                      ? 'Add a comment… (type @ to mention)'
+                      : 'Sign in to comment'
+                  }
+                  value={commentText}
+                  onChange={commentMention.onChange}
+                  onKeyDown={(e) => {
+                    if (commentMention.onKeyDown(e)) return;
+                    if (e.key === 'Enter') onAddComment();
+                  }}
+                  disabled={!canContribute}
+                />
+                {commentMention.popup}
+              </div>
               <button
                 className="btn-primary"
                 onClick={onAddComment}

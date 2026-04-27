@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   createInviteRemote,
   listInvitesRemote,
@@ -6,6 +6,7 @@ import {
   type GuestInvite,
 } from '../lib/api';
 import { toast } from '../lib/toast';
+import { confirm } from '../lib/confirm';
 
 interface Props {
   open: boolean;
@@ -47,13 +48,27 @@ export function InvitesPanel({ open, onClose }: Props) {
     if (open) reload();
   }, [open]);
 
+  const openerRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      const opener = openerRef.current;
+      if (opener && document.contains(opener)) opener.focus();
+      openerRef.current = null;
+      return;
+    }
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) openerRef.current = active;
+
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
     }
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
   }, [open, onClose]);
 
   const onCreate = async () => {
@@ -90,9 +105,13 @@ export function InvitesPanel({ open, onClose }: Props) {
   };
 
   const onRevoke = async (i: GuestInvite) => {
-    if (!confirm(`Revoke this invite link? Anyone using it will lose access.`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Revoke invite link?',
+      message: 'Anyone using this link will lose access immediately.',
+      confirmLabel: 'Revoke',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await revokeInviteRemote(i.id);
       setInvites((prev) =>
@@ -110,7 +129,7 @@ export function InvitesPanel({ open, onClose }: Props) {
   return (
     <>
       <div className="drawer-backdrop open" onClick={onClose} aria-hidden="false" />
-      <div className="invites-modal" role="dialog" aria-label="Guest invites">
+      <div className="invites-modal" role="dialog" aria-modal="true" aria-label="Guest invites">
         <div className="invites-modal-head">
           <h2>Guest invite links</h2>
           <button

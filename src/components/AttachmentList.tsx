@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { Attachment } from '../types';
 import { getAttachmentSignedUrl } from '../lib/api';
 import { formatDateShort } from '../lib/format';
+import { confirm } from '../lib/confirm';
+import { toast } from '../lib/toast';
 
 export interface AttachmentListProps {
   attachments: Attachment[];
@@ -36,7 +38,12 @@ export function AttachmentList({
     try {
       for (const file of Array.from(files)) {
         if (file.size > 25 * 1024 * 1024) {
-          if (!confirm(`${file.name} is over 25 MB — continue anyway?`)) continue;
+          const ok = await confirm({
+            title: 'Large file',
+            message: `${file.name} is over 25 MB — upload anyway?`,
+            confirmLabel: 'Upload',
+          });
+          if (!ok) continue;
         }
         await onUploadFile(file);
       }
@@ -85,15 +92,30 @@ export function AttachmentList({
   return (
     <>
       <div
-        className={`drop-zone ${dragActive ? 'active' : ''} ${attachments.length === 0 ? 'empty' : ''}`}
+        className={`drop-zone ${dragActive ? 'active' : ''} ${attachments.length === 0 ? 'empty' : ''} ${attachments.length === 0 && canEdit ? 'tappable' : ''}`}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
+        onClick={
+          attachments.length === 0 && canEdit ? onPickFile : undefined
+        }
+        role={attachments.length === 0 && canEdit ? 'button' : undefined}
+        tabIndex={attachments.length === 0 && canEdit ? 0 : undefined}
+        onKeyDown={
+          attachments.length === 0 && canEdit
+            ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onPickFile();
+                }
+              }
+            : undefined
+        }
       >
         {attachments.length === 0 ? (
           <p className="attachment-empty">
             {canEdit
-              ? 'Drag a file here, or use Upload / paste a link below.'
+              ? 'Tap to choose a file, drag one in, or paste a link below.'
               : 'No files or links yet.'}
           </p>
         ) : (
@@ -208,7 +230,7 @@ function AttachmentRow({
         const url = thumbUrl ?? (await getAttachmentSignedUrl(attachment.storagePath));
         window.open(url, '_blank', 'noopener,noreferrer');
       } catch (e) {
-        alert("Couldn't open file: " + (e as Error).message);
+        toast.error("Couldn't open file: " + (e as Error).message);
       } finally {
         setOpening(false);
       }
@@ -243,10 +265,17 @@ function AttachmentRow({
       {canDelete && (
         <button
           className="del-btn"
-          onClick={() => {
-            if (confirm(`Delete "${attachment.filename}"?`)) onDelete();
+          onClick={async () => {
+            const ok = await confirm({
+              title: 'Delete attachment?',
+              message: `"${attachment.filename}" will be permanently removed.`,
+              confirmLabel: 'Delete',
+              danger: true,
+            });
+            if (ok) onDelete();
           }}
-          title="Delete"
+          title="Delete attachment"
+          aria-label={`Delete ${attachment.filename}`}
         >
           ✕
         </button>

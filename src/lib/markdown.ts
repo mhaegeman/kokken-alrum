@@ -46,11 +46,17 @@ export function renderMarkdown(input: string, options: MarkdownOptions = {}): st
 
   // @mentions — wrap recognized user names + contacts in a styled span.
   // Match @<word> globally; if the word matches a known user display name
-  // we render a user mention, otherwise we try contacts (matched on a
-  // normalized handle). If neither matches we leave the text alone.
+  // (either lowercase or normalized to alphanumerics) we render a user
+  // mention, otherwise we try contacts (matched on a normalized handle).
+  // If neither matches we leave the text alone.
   const userKnownLower = new Set(
     (options.mentionNames ?? []).map((n) => n.toLowerCase()),
   );
+  const usersByHandle = new Map<string, string>();
+  for (const n of options.mentionNames ?? []) {
+    const h = contactHandle(n);
+    if (h) usersByHandle.set(h, n);
+  }
   const contactsByHandle = new Map<string, MentionContact>();
   for (const c of options.mentionContacts ?? []) {
     const h = contactHandle(c.name);
@@ -64,6 +70,10 @@ export function renderMarkdown(input: string, options: MarkdownOptions = {}): st
         const lower = name.toLowerCase();
         if (userKnownLower.has(lower)) {
           return `${prefix}<span class="mention" data-name="${lower}">@${name}</span>`;
+        }
+        const userMatch = usersByHandle.get(contactHandle(name));
+        if (userMatch) {
+          return `${prefix}<span class="mention" data-name="${userMatch.toLowerCase()}">@${escapeHtml(userMatch)}</span>`;
         }
         const contact = contactsByHandle.get(contactHandle(name));
         if (contact) {

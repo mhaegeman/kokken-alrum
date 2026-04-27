@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../../state/store';
 import { fmtMoney } from '../../lib/format';
 import type { BudgetItem } from '../../types';
 import { AttachmentList } from '../AttachmentList';
 import type { Profile } from '../../lib/auth';
+import { confirm } from '../../lib/confirm';
 
 export function BudgetView({
   currentUserId,
@@ -80,28 +81,17 @@ export function BudgetView({
           </p>
         </div>
         <div className="stat">
-          <p className="stat-label">Budget target</p>
+          <p className="stat-label">
+            <label htmlFor="budget-target-input">Budget target</label>
+          </p>
           {isGuest ? (
-            <p className="stat-value">{target}</p>
+            <p className="stat-value">{fmtMoney(target, cur)}</p>
           ) : (
-            <>
-              <p
-                className="stat-value"
-                contentEditable
-                suppressContentEditableWarning
-                style={{ outline: 'none' }}
-                onBlur={(e) => {
-                  const v = parseInt(
-                    (e.target.textContent || '').replace(/\D/g, ''),
-                    10,
-                  ) || 0;
-                  setBudgetTarget(v);
-                }}
-              >
-                {target}
-              </p>
-              <p className="stat-sub">click to edit</p>
-            </>
+            <BudgetTargetInput
+              value={target}
+              onSave={setBudgetTarget}
+              cur={cur}
+            />
           )}
         </div>
       </div>
@@ -238,10 +228,15 @@ export function BudgetView({
                           <button
                             className="del-btn"
                             title="Delete item"
-                            onClick={() => {
-                              if (confirm(`Delete "${item.name}"?`)) {
-                                deleteBudgetItem(item.id);
-                              }
+                            aria-label={`Delete ${item.name}`}
+                            onClick={async () => {
+                              const ok = await confirm({
+                                title: 'Delete budget item?',
+                                message: `"${item.name}" and any attachments will be permanently deleted.`,
+                                confirmLabel: 'Delete',
+                                danger: true,
+                              });
+                              if (ok) deleteBudgetItem(item.id);
                             }}
                           >
                             ✕
@@ -312,6 +307,49 @@ export function BudgetView({
           </div>
         )}
       </div>
+    </>
+  );
+}
+
+function BudgetTargetInput({
+  value,
+  onSave,
+  cur,
+}: {
+  value: number;
+  onSave: (v: number) => void;
+  cur: string;
+}) {
+  const [draft, setDraft] = useState<string>(String(value || 0));
+
+  useEffect(() => {
+    setDraft(String(value || 0));
+  }, [value]);
+
+  const commit = () => {
+    const v = Math.max(0, parseInt(draft.replace(/\D/g, ''), 10) || 0);
+    if (v !== value) onSave(v);
+    setDraft(String(v));
+  };
+
+  return (
+    <>
+      <input
+        id="budget-target-input"
+        className="stat-value budget-target-input tnum"
+        type="number"
+        inputMode="numeric"
+        min={0}
+        step={1000}
+        aria-label={`Budget target in ${cur}`}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        }}
+      />
+      <p className="stat-sub">{cur} · click to edit</p>
     </>
   );
 }
