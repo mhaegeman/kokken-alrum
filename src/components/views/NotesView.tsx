@@ -59,16 +59,35 @@ export function NotesView({
     [profilesById, state.contacts, currentUserId],
   );
 
-  // Auto-select the first topic once data loads / topics change.
+  // Auto-select the first topic on desktop (where the side panel + thread
+  // are visible together and an empty thread pane looks odd). On mobile
+  // the layout shows either the topic list or one thread, so auto-
+  // selecting would skip past the list and trap the user — tapping the
+  // back arrow sets selectedTopicId to null, and an unconditional auto-
+  // select effect would immediately re-select the same topic. Only the
+  // mobile breakpoint shows the back button, so gating on viewport width
+  // matches the layout exactly.
   useEffect(() => {
-    if (selectedTopicId == null && topics.length > 0) {
+    const isMobile =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(max-width: 720px)').matches;
+    if (
+      !isMobile &&
+      selectedTopicId == null &&
+      topics.length > 0
+    ) {
       onSelectTopic(topics[0].id);
     }
+    // If the currently-selected topic disappears (e.g. deleted by the
+    // other user via realtime), clear to null. On mobile the user lands
+    // back on the list; on desktop the empty state appears, then the
+    // auto-select branch above picks the new first topic on the next
+    // render. Either way is less surprising than silently swapping.
     if (
       selectedTopicId != null &&
       !topics.find((t) => t.id === selectedTopicId)
     ) {
-      onSelectTopic(topics[0]?.id ?? null);
+      onSelectTopic(null);
     }
   }, [topics, selectedTopicId, onSelectTopic]);
 
